@@ -1,9 +1,9 @@
 import os
 import uuid
 import asyncio
-import chromadb
+import re
 from typing import List, Dict, Any
-from app.services.embedding_service import EmbeddingService
+from app.core.config import check_low_memory
 from app.core.logging import logger
 
 COLLECTION_NAME = "knowledge_base"
@@ -29,43 +29,31 @@ DEMO_FACTS = {
     ]
 }
 
-def chunk_text(text: str, chunk_size: int = 500, chunk_overlap: int = 50) -> List[str]:
-    chunks = []
-    start = 0
-    text_len = len(text)
-    
-    if text_len == 0:
-        return []
-        
-    while start < text_len:
-        end = min(start + chunk_size, text_len)
-        chunk = text[start:end]
-        chunks.append(chunk)
-        
-        start += chunk_size - chunk_overlap
-        if chunk_size <= chunk_overlap:
-            break
-            
-    return chunks
-
 class RAGService:
     _client = None
     _collection = None
     _init_lock = asyncio.Lock()
 
     def __init__(self) -> None:
-        self.embedding_service = EmbeddingService()
+        # Load embedding service lazily only if not in low memory mode
+        self.embedding_service = None
 
     @classmethod
     def get_client(cls):
+        if check_low_memory():
+            return None
         if cls._client is None:
-            # Ephemeral / in-memory client
+            import chromadb
             logger.info("[RAG] Initializing Ephemeral ChromaDB in-memory client...")
             cls._client = chromadb.EphemeralClient()
         return cls._client
 
     async def initialize_collection(self) -> None:
-        """Create ChromaDB collection and seed it with demo facts if empty."""
+        """Initialize ChromaDB only if not under strict memory constraints."""
+        if check_low_memory():
+            logger.info("[RAG] Low memory deployment detected. Skipping ChromaDB / Embedding initialization completely.")
+            return
+
         async with self._init_lock:
             if self._collection is not None:
                 return
@@ -74,11 +62,9 @@ class RAGService:
             loop = asyncio.get_event_loop()
 
             def load_and_seed():
-                # 1. Get or create collection
                 try:
                     collection = client.get_or_create_collection(name=COLLECTION_NAME)
                 except Exception as e:
-                    # Dimension mismatch check
                     logger.warning(f"[RAG] Dimension check: deleting collection and recreating: {e}")
                     client.delete_collection(name=COLLECTION_NAME)
                     collection = client.get_or_create_collection(name=COLLECTION_NAME)
@@ -86,21 +72,24 @@ class RAGService:
 
             self._collection = await loop.run_in_executor(None, load_and_seed)
             
-            # Check if seeded
             def check_empty():
                 return self._collection.count() == 0
 
             is_empty = await loop.run_in_executor(None, check_empty)
             if is_empty:
                 logger.info("[RAG] Seeding ChromaDB with demo campaign facts...")
-                # Seed facts for both campaigns
                 for campaign_key, facts in DEMO_FACTS.items():
-                    # Generate deterministic UUIDs for campaigns to match schemas
                     campaign_id = uuid.uuid5(uuid.NAMESPACE_DNS, campaign_key)
                     await self.index_facts(campaign_id, campaign_key, facts)
 
     async def index_facts(self, campaign_id: uuid.UUID, filename: str, facts: List[str]) -> None:
-        client = self.get_client()
+        if check_low_memory():
+            return
+
+        if self.embedding_service is None:
+            from app.services.embedding_service import EmbeddingService
+            self.embedding_service = EmbeddingService()
+
         embeddings = await self.embedding_service.get_embeddings(facts)
         loop = asyncio.get_event_loop()
 
@@ -132,9 +121,52 @@ class RAGService:
         query: str,
         limit: int = 3
     ) -> List[Dict[str, Any]]:
-        """Perform semantic search on ChromaDB in thread pool (fixing P1 event loop blocking)."""
+        """Perform semantic search, falling back to light keyword matching in low memory modes."""
+        
+        # 1. Low-Memory Fallback: Simple Word Overlap Matching
+        if check_low_memory():
+            # Clean and split query words
+            query_words = set(re.findall(r'\w+', query.lower()))
+            if not query_words:
+                return []
+            
+            # Map campaign_id back to campaign key string
+            campaign_key = None
+            for key in ["hospital", "real_estate"]:
+                if str(uuid.uuid5(uuid.NAMESPACE_DNS, key)) == str(campaign_id):
+                    campaign_key = key
+                    break
+            
+            if not campaign_key:
+                return []
+
+            facts = DEMO_FACTS.get(campaign_key, [])
+            scored_results = []
+
+            for idx, fact in enumerate(facts):
+                fact_words = set(re.findall(r'\w+', fact.lower()))
+                overlap = len(query_words.intersection(fact_words))
+                if overlap > 0:
+                    # Calculate simple Jaccard-like or overlap ratio score
+                    score = overlap / len(query_words.union(fact_words))
+                    scored_results.append({
+                        "text": fact,
+                        "score": score,
+                        "filename": campaign_key,
+                        "chunk_index": idx
+                    })
+
+            # Sort by highest match score
+            scored_results.sort(key=lambda x: x["score"], reverse=True)
+            return scored_results[:limit]
+
+        # 2. Standard ChromaDB Semantic Search Path
         if self._collection is None:
             await self.initialize_collection()
+
+        if self.embedding_service is None:
+            from app.services.embedding_service import EmbeddingService
+            self.embedding_service = EmbeddingService()
 
         query_vector = await self.embedding_service.get_query_embedding(query)
         loop = asyncio.get_event_loop()

@@ -8,10 +8,6 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, status
 
 from app.voice_demo.schemas.voice_agent import VoiceProfileOut, SessionSetupIn, SessionSetupOut
-from app.services.conversation_engine import ConversationEngine
-from app.services.tts_service import VoiceService
-from app.services.stt_service import SpeechService
-from app.services.vad_service import EndOfSpeechDetector
 from app.services.session_manager import SessionManager
 from app.services.call_state_machine import CallStateMachine, CallState
 from app.core.logging import logger
@@ -194,6 +190,8 @@ async def voice_agent_websocket(websocket: WebSocket, session_id: str):
     last_intermediate_stt_len = 0
     intermediate_stt_task: Optional[asyncio.Task] = None
 
+    from app.services.vad_service import EndOfSpeechDetector
+    from app.services.stt_service import SpeechService
     vad = EndOfSpeechDetector()
     stt = SpeechService()
 
@@ -432,6 +430,8 @@ async def _run_pipeline(
             return
 
         try:
+            from app.services.conversation_engine import ConversationEngine
+            from app.services.tts_service import VoiceService
             engine = ConversationEngine()
             tts = VoiceService()
 
