@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.core.config import settings
+from app.core.config import settings, check_low_memory
 from app.core.logging import logger, setup_logging
 from app.core.telemetry import STARTUP_METRICS
 from app.services.rag_service import RAGService
@@ -47,54 +47,57 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to auto-initialize RAG collection: {e}")
 
-    # Eagerly warm up AI pipeline services
-    try:
-        w_start = time.perf_counter()
-
-        # 1. Warm up VAD
-        v_t0 = time.perf_counter()
-        from app.services.speech.vad.silero_provider import SileroVADProvider
-        def load_vad():
-            v = SileroVADProvider()
-            v.process_frame(b"\x00" * 160)
-            return v
-        await asyncio.get_event_loop().run_in_executor(None, load_vad)
-        STARTUP_METRICS["vad_load_ms"] = round((time.perf_counter() - v_t0) * 1000.0, 1)
-
-        # 2. Warm up STT Singleton (Whisper)
-        s_t0 = time.perf_counter()
-        from app.services.stt_service import SpeechService
-        stt_ms = await SpeechService.warmup()
-        STARTUP_METRICS["stt_load_ms"] = round(stt_ms, 1)
-
-        # 3. Warm up TTS Provider
-        t_t0 = time.perf_counter()
-        from app.services.tts_service import VoiceService
-        tts = VoiceService()
-        async for _ in tts.stream_speech("Hello"):
-            break
-        STARTUP_METRICS["tts_load_ms"] = round((time.perf_counter() - t_t0) * 1000.0, 1)
-
-        # 4. Warm up LLM Connection Pool (Groq/OpenRouter)
-        l_t0 = time.perf_counter()
+    # Eagerly warm up AI pipeline services (skip in low memory mode to avoid OOM boot crashes)
+    if check_low_memory():
+        logger.info("[WARMUP] Low memory environment detected. Skipping eager warmup of AI subsystems. Tensors will load lazily on demand.")
+    else:
         try:
-            from app.services.llm_service import LLMService
-            llm = LLMService()
-            await llm.generate_completion([{"role": "user", "content": "hi"}])
-        except Exception as llm_err:
-            logger.warning(f"[WARMUP] LLM ping non-fatal error: {llm_err}")
-        STARTUP_METRICS["llm_warmup_ms"] = round((time.perf_counter() - l_t0) * 1000.0, 1)
+            w_start = time.perf_counter()
 
-        tot_ms = (time.perf_counter() - w_start) * 1000.0
-        STARTUP_METRICS["total_warmup_ms"] = round(tot_ms, 1)
-        logger.info(
-            f"[WARMUP COMPLETE] All AI Subsystems Ready! "
-            f"VAD={STARTUP_METRICS['vad_load_ms']}ms | STT={STARTUP_METRICS['stt_load_ms']}ms | "
-            f"TTS={STARTUP_METRICS['tts_load_ms']}ms | LLM={STARTUP_METRICS['llm_warmup_ms']}ms"
-        )
+            # 1. Warm up VAD
+            v_t0 = time.perf_counter()
+            from app.services.speech.vad.silero_provider import SileroVADProvider
+            def load_vad():
+                v = SileroVADProvider()
+                v.process_frame(b"\x00" * 160)
+                return v
+            await asyncio.get_event_loop().run_in_executor(None, load_vad)
+            STARTUP_METRICS["vad_load_ms"] = round((time.perf_counter() - v_t0) * 1000.0, 1)
 
-    except Exception as e:
-        logger.error(f"[WARMUP ERROR] Failed during AI subsystems startup warmup: {e}")
+            # 2. Warm up STT Singleton (Whisper)
+            s_t0 = time.perf_counter()
+            from app.services.stt_service import SpeechService
+            stt_ms = await SpeechService.warmup()
+            STARTUP_METRICS["stt_load_ms"] = round(stt_ms, 1)
+
+            # 3. Warm up TTS Provider
+            t_t0 = time.perf_counter()
+            from app.services.tts_service import VoiceService
+            tts = VoiceService()
+            async for _ in tts.stream_speech("Hello"):
+                break
+            STARTUP_METRICS["tts_load_ms"] = round((time.perf_counter() - t_t0) * 1000.0, 1)
+
+            # 4. Warm up LLM Connection Pool (Groq/OpenRouter)
+            l_t0 = time.perf_counter()
+            try:
+                from app.services.llm_service import LLMService
+                llm = LLMService()
+                await llm.generate_completion([{"role": "user", "content": "hi"}])
+            except Exception as llm_err:
+                logger.warning(f"[WARMUP] LLM ping non-fatal error: {llm_err}")
+            STARTUP_METRICS["llm_warmup_ms"] = round((time.perf_counter() - l_t0) * 1000.0, 1)
+
+            tot_ms = (time.perf_counter() - w_start) * 1000.0
+            STARTUP_METRICS["total_warmup_ms"] = round(tot_ms, 1)
+            logger.info(
+                f"[WARMUP COMPLETE] All AI Subsystems Ready! "
+                f"VAD={STARTUP_METRICS['vad_load_ms']}ms | STT={STARTUP_METRICS['stt_load_ms']}ms | "
+                f"TTS={STARTUP_METRICS['tts_load_ms']}ms | LLM={STARTUP_METRICS['llm_warmup_ms']}ms"
+            )
+
+        except Exception as e:
+            logger.error(f"[WARMUP ERROR] Failed during AI subsystems startup warmup: {e}")
 
     STARTUP_METRICS["boot_time_sec"] = round(time.perf_counter() - startup_start, 2)
 
