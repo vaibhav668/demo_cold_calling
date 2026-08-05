@@ -487,6 +487,10 @@ async def _run_pipeline(
 
     if not _is_superseded() and not cancel_event.is_set():
         if should_hangup:
+            logger.info("[DEMO-PIPELINE] Hangup detected. Waiting for audio queue to drain before terminating call...")
+            while not audio_queue.empty():
+                await asyncio.sleep(0.1)
+            await asyncio.sleep(2.0)
             if state_callback:
                 await state_callback(CallState.CALL_COMPLETED)
         else:

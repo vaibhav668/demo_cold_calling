@@ -162,7 +162,12 @@ class ConversationEngine:
         low_text = full_assistant_text.lower()
         if state == "CLOSING" or next_state == "CLOSING":
             # Hang up after closing remarks (e.g. contains goodbye triggers)
-            if any(farewell in low_text for farewell in ["goodbye", "bye", "take care", "wonderful day"]):
+            farewell_words = [
+                "goodbye", "bye", "take care", "great day", "wonderful day", 
+                "have a good one", "thank you for your time", "contact you",
+                "अलविदा", "नमस्ते", "शुक्रिया", "ధన్యవాదాలు", "సెలవు"
+            ]
+            if any(farewell in low_text for farewell in farewell_words):
                 should_hangup = True
 
         yield None, should_hangup, should_transfer

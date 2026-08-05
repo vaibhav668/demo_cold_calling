@@ -95,6 +95,13 @@ class EdgeTTSProvider(TextToSpeechProvider):
         language: Optional[str] = None,
         voice_config: Optional[dict] = None,
     ) -> AsyncGenerator[bytes, None]:
+        import re
+        clean_text = text.strip()
+        # Verify text contains at least one letter or number (supports English, Devanagari, Telugu scripts)
+        if not clean_text or not re.search(r'[\w\u0900-\u097F\u0C00-\u0C7F]', clean_text):
+            logger.debug(f"[EdgeTTS] Skipping punctuation-only/empty text chunk: '{text}'")
+            return
+
         try:
             import edge_tts
         except ImportError:
