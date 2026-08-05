@@ -487,12 +487,24 @@ async def _run_pipeline(
 
     if not _is_superseded() and not cancel_event.is_set():
         if should_hangup:
-            logger.info("[DEMO-PIPELINE] Hangup detected. Waiting for audio queue to drain before terminating call...")
-            while not audio_queue.empty():
+            logger.info("[DEMO-PIPELINE] END_CALL reached. Draining audio queue before terminating...")
+            # Wait until all goodbye audio bytes have been sent to the browser
+            drain_timeout = 0.0
+            while not audio_queue.empty() and drain_timeout < 20.0:
                 await asyncio.sleep(0.1)
-            await asyncio.sleep(2.0)
+                drain_timeout += 0.1
+            # Extra 1.5s buffer for browser playback of final audio chunk
+            await asyncio.sleep(1.5)
+            # Notify frontend: show "Call Ended" UI and stop recording
+            try:
+                if websocket:
+                    await websocket.send_json({"event": "conversation_finished", "reason": "objective_reached"})
+            except Exception:
+                pass
+            # Transition to terminal state — this breaks the main receive() loop
             if state_callback:
                 await state_callback(CallState.CALL_COMPLETED)
         else:
             if state_callback:
                 await state_callback(CallState.WAITING_FOR_CUSTOMER)
+

@@ -41,10 +41,18 @@ HOSPITAL_STATE_GOALS = {
         "Transition tag: [STATE: CLOSING]"
     ),
     "CLOSING": (
-        "Ask if they have any remaining questions about doctor, timings, location, parking, etc.\n"
-        "If no further questions, politely end the call. Never repeat greetings or farewells.\n"
-        "Farewell examples: 'Have a wonderful day. Goodbye!' or 'Take care. Goodbye!'\n"
-        "Transition tag: [STATE: CLOSING]"
+        "Deliver a warm, professional goodbye. Do NOT ask any more questions.\n"
+        "Address the customer by name one final time if you know it.\n"
+        "Thank them genuinely for their time.\n"
+        "Farewell examples:\n"
+        "  Hospital: 'Perfect {{customer_name}}. Your appointment is confirmed for tomorrow at 11 AM with Dr. Sharma. Please arrive 15 minutes early. Thank you so much for your time. Have a wonderful day. Goodbye!'\n"
+        "  General: 'Thank you for your time. It was a pleasure speaking with you. Have a wonderful day. Goodbye!'\n"
+        "This is the FINAL turn. Do NOT wait for another reply.\n"
+        "Transition tag: [STATE: END_CALL]"
+    ),
+    "END_CALL": (
+        "The call has concluded. Do not speak anything. The session will now be terminated automatically.\n"
+        "Transition tag: [STATE: END_CALL]"
     )
 }
 
@@ -80,8 +88,18 @@ REAL_ESTATE_STATE_GOALS = {
         "Transition tag: [STATE: CLOSING]"
     ),
     "CLOSING": (
-        "Acknowledge their decision politely, thank them, and end the call naturally. Do not repeat closing lines.\n"
-        "Transition tag: [STATE: CLOSING]"
+        "Deliver a warm, professional goodbye. Do NOT ask any more questions.\n"
+        "Address the customer by name one final time if you know it.\n"
+        "Based on their outcome: summarize their interest or decision in one sentence, then thank them.\n"
+        "Outcome examples:\n"
+        "  Interested: 'Thank you {{customer_name}}. I've noted your interest in a 3-bedroom apartment. One of our consultants will be in touch shortly. Have a wonderful day. Goodbye!'\n"
+        "  Not interested: 'Absolutely, no problem at all. Thank you for your time. Do reach out if you ever need assistance. Have a great day. Goodbye!'\n"
+        "This is the FINAL turn. Do NOT wait for another reply.\n"
+        "Transition tag: [STATE: END_CALL]"
+    ),
+    "END_CALL": (
+        "The call has concluded. Do not speak anything. The session will now be terminated automatically.\n"
+        "Transition tag: [STATE: END_CALL]"
     )
 }
 

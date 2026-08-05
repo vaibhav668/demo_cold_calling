@@ -159,15 +159,10 @@ class ConversationEngine:
             await self.session_manager.append_message(call_id, bot_turn)
 
         # 7. Evaluate completion / hangup conditions
-        low_text = full_assistant_text.lower()
-        if state == "CLOSING" or next_state == "CLOSING":
-            # Hang up after closing remarks (e.g. contains goodbye triggers)
-            farewell_words = [
-                "goodbye", "bye", "take care", "great day", "wonderful day", 
-                "have a good one", "thank you for your time", "contact you",
-                "अलविदा", "नमस्ते", "शुक्रिया", "ధన్యవాదాలు", "సెలవు"
-            ]
-            if any(farewell in low_text for farewell in farewell_words):
-                should_hangup = True
+        # Deterministic: if LLM tagged the next state as END_CALL, hang up immediately.
+        # No fragile word-matching — state transition is the single source of truth.
+        if next_state == "END_CALL" or state == "END_CALL":
+            should_hangup = True
+            logger.info(f"[CONV-CONTROLLER] Session {call_id} reached END_CALL → scheduling hangup.")
 
         yield None, should_hangup, should_transfer
