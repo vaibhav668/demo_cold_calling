@@ -93,9 +93,11 @@ class ConversationEngine:
             history.append({
                 "role": "system",
                 "content": (
-                    "[CALL_START] The call just connected. Greet the customer warmly "
-                    "by name (if available), introduce yourself as the AI coordinator, "
-                    "and state the purpose of the call naturally based on your role."
+                    "[CALL_START] The call just connected. Greet the customer warmly, "
+                    "introduce yourself naturally as a representative of CityCare Hospital or Skyline Developers "
+                    "based on your system template, and ask for the customer's name to verify whom you are speaking with. "
+                    "Do NOT explain the reason for the call, mention appointments, or discuss properties yet. "
+                    "Follow the exact greeting example: Greeting -> Introduction -> Ask customer name."
                 )
             })
             user_text_for_llm = "[Please begin with your greeting now.]"
