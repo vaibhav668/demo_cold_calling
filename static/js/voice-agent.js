@@ -226,9 +226,11 @@ async function loadVoices() {
 }
 
 function renderVoiceCircle() {
+    if (!elVoiceNodes) return;
     elVoiceNodes.innerHTML = "";
     const total  = voices.length;
-    const radius = 160; // radius of orbit path
+    const isMobile = window.innerWidth <= 768;
+    const radius = isMobile ? 112 : 138;
 
     voices.forEach((voice, idx) => {
         const node = document.createElement("div");
@@ -236,16 +238,21 @@ function renderVoiceCircle() {
         node.dataset.voiceName = voice.name;
         node.title = `${voice.name} — ${voice.description}`;
 
-        const img = createAvatarElement(voice, 52);
+        const img = createAvatarElement(voice, isMobile ? 46 : 54);
         node.appendChild(img);
 
-        // Circular positioning math: theta = (idx / total) * 2 * PI - PI / 2
         const angle = (idx / total) * 2 * Math.PI - Math.PI / 2;
         node.style.transform = `translate(${Math.cos(angle) * radius}px, ${Math.sin(angle) * radius}px)`;
         node.addEventListener("click", () => selectVoice(voice.name));
         elVoiceNodes.appendChild(node);
     });
 }
+
+window.addEventListener("resize", () => {
+    if (voices && voices.length > 0) {
+        renderVoiceCircle();
+    }
+});
 
 function selectVoice(voiceName) {
     activeVoiceName = voiceName;
