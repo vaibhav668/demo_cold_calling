@@ -20,6 +20,7 @@ class SpeechService:
     async def transcribe_utterance(
         self,
         audio_bytes: bytes,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        prompt: Optional[str] = None
     ) -> Optional[str]:
-        return await self.provider.transcribe_utterance(audio_bytes, language=language)
+        return await self.provider.transcribe_utterance(audio_bytes, language=language, prompt=prompt)

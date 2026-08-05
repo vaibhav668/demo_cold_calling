@@ -140,6 +140,21 @@ class ConversationEngine:
             for k, v in pairs:
                 extracted_vars[k.strip().lower()] = v.strip()
 
+        # Name Validation Guardrail: Verify extracted customer_name is plausible
+        if "customer_name" in extracted_vars:
+            name_val = extracted_vars["customer_name"].strip().title()
+            invalid_names = {
+                "unknown", "none", "null", "undefined", "n/a", "user", "customer", 
+                "my gosh", "in the car", "my car", "gosh", "yes", "no", "hello", "hi", "ok", "okay"
+            }
+            if name_val.lower() in invalid_names or len(name_val) < 2 or not re.search(r'[A-Za-z\u0900-\u097F\u0C00-\u0C7F]', name_val):
+                logger.warning(f"[CONV-CONTROLLER] Rejected invalid extracted name '{name_val}'. Staying in IDENTITY_COLLECTION state.")
+                extracted_vars.pop("customer_name", None)
+                if state in ("GREETING", "IDENTITY_COLLECTION"):
+                    next_state = "IDENTITY_COLLECTION"
+            else:
+                extracted_vars["customer_name"] = name_val
+
         # Update controller state
         if next_state:
             await self.session_manager.update_session_state(call_id, next_state)

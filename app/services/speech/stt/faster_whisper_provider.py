@@ -15,15 +15,31 @@ _SILENCE_TOKENS = {
     "Mm.", "mm.", "Mmm.", "mmm.", "[Music]", "[Applause]", "[Laughter]",
 }
 
-def _ulaw_to_float32_16k(audio_bytes: bytes) -> np.ndarray:
+def _normalize_and_clean_pcm(audio_bytes: bytes) -> tuple[bytes, float, float, float]:
     """
-    Convert G.711 mu-law 8kHz bytes → float32 numpy array at 16kHz.
-    Uses C-level audioop functions.
+    Convert mu-law 8kHz bytes to linear PCM 8kHz, check duration/RMS, and apply peak gain normalization.
+    Returns (normalized_pcm_bytes, duration_sec, rms_level, max_sample).
     """
-    pcm_8k = audioop.ulaw2lin(audio_bytes, 2)
-    pcm_16k, _ = audioop.ratecv(pcm_8k, 2, 1, 8000, 16000, None)
-    samples = np.frombuffer(pcm_16k, dtype=np.int16).astype(np.float32) / 32768.0
-    return samples
+    if not audio_bytes:
+        return b"", 0.0, 0.0, 0.0
+
+    pcm_bytes = audioop.ulaw2lin(audio_bytes, 2)
+    duration_sec = len(audio_bytes) / 8000.0
+    rms_level = float(audioop.rms(pcm_bytes, 2))
+    max_sample = float(audioop.max(pcm_bytes, 2))
+
+    # Reject extremely short utterances (< 0.35s / 2800 bytes) or silent background noise (RMS < 70.0)
+    if duration_sec < 0.35 or rms_level < 70.0:
+        return b"", duration_sec, rms_level, max_sample
+
+    # Microphone Audio Normalization: scale quiet mic audio up to target peak (~28000 / 85% full scale)
+    if 0 < max_sample < 24000:
+        gain = min(4.0, 28000.0 / max(1.0, max_sample))
+        pcm_bytes = audioop.mul(pcm_bytes, 2, gain)
+        rms_level = float(audioop.rms(pcm_bytes, 2))
+        max_sample = float(audioop.max(pcm_bytes, 2))
+
+    return pcm_bytes, duration_sec, rms_level, max_sample
 
 class FasterWhisperProvider(SpeechToTextProvider):
     """
@@ -145,36 +161,49 @@ class FasterWhisperProvider(SpeechToTextProvider):
     async def transcribe_utterance(
         self,
         audio_bytes: bytes,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        prompt: Optional[str] = None
     ) -> Optional[str]:
-        if not audio_bytes or len(audio_bytes) < 160:
+        import time
+        start_time = time.perf_counter()
+
+        pcm_bytes, duration_sec, rms_level, peak_level = _normalize_and_clean_pcm(audio_bytes)
+        if not pcm_bytes:
+            logger.info(f"[STT-REJECT] Rejected utterance: duration={duration_sec:.2f}s, RMS={rms_level:.1f}")
             return None
 
         model = await self._get_model(self.model_size)
         if model != "FAILED" and model is not None:
             try:
                 def prepare_audio():
-                    return _ulaw_to_float32_16k(audio_bytes)
+                    pcm_16k, _ = audioop.ratecv(pcm_bytes, 2, 1, 8000, 16000, None)
+                    return np.frombuffer(pcm_16k, dtype=np.int16).astype(np.float32) / 32768.0
 
                 x_16k = await asyncio.get_event_loop().run_in_executor(None, prepare_audio)
 
                 def run_transcription():
                     import torch
                     with torch.inference_mode():
-                        # Set beam_size=1 for maximum speed in low-memory environments
                         beam_size = 1 if "tiny" in self.model_size else 3
                         segments, info = model.transcribe(
                             x_16k,
                             beam_size=beam_size,
                             language=language,
+                            initial_prompt=prompt,
                             vad_filter=True
                         )
                         text = " ".join([seg.text for seg in segments]).strip()
                         return text, info.language
 
                 text, detected_lang = await asyncio.get_event_loop().run_in_executor(None, run_transcription)
+                latency_ms = (time.perf_counter() - start_time) * 1000.0
+
                 if text and text not in _SILENCE_TOKENS and len(text) > 2:
-                    logger.info(f"[STT] Local Whisper transcribed ({detected_lang}): '{text}'")
+                    logger.info(
+                        f"[STT-DIAGNOSTICS] Local Whisper | duration={duration_sec:.2f}s | RMS={rms_level:.1f} | "
+                        f"peak={peak_level:.1f} | sample_rate=8000Hz | bytes={len(audio_bytes)} | "
+                        f"latency={latency_ms:.1f}ms | prompt='{prompt or ''}' | transcribed ({detected_lang}): '{text}'"
+                    )
                     return text
                 return None
             except Exception as e:
@@ -182,13 +211,32 @@ class FasterWhisperProvider(SpeechToTextProvider):
                 logger.warning(f"[STT] Local transcription error: {e}\n{traceback.format_exc()}. Falling back to Cloud API...")
 
         if self.api_key:
-            return await self._transcribe_cloud_fallback(audio_bytes, language)
+            return await self._transcribe_cloud_fallback(audio_bytes, language, prompt=prompt, pcm_bytes=pcm_bytes, duration_sec=duration_sec, rms_level=rms_level, peak_level=peak_level, start_time=start_time)
 
         return self._mock_transcription(audio_bytes)
 
-    async def _transcribe_cloud_fallback(self, audio_bytes: bytes, language: Optional[str] = None) -> Optional[str]:
+    async def _transcribe_cloud_fallback(
+        self,
+        audio_bytes: bytes,
+        language: Optional[str] = None,
+        prompt: Optional[str] = None,
+        pcm_bytes: Optional[bytes] = None,
+        duration_sec: float = 0.0,
+        rms_level: float = 0.0,
+        peak_level: float = 0.0,
+        start_time: float = 0.0
+    ) -> Optional[str]:
+        import time
+        if start_time == 0.0:
+            start_time = time.perf_counter()
+
+        if pcm_bytes is None:
+            pcm_bytes, duration_sec, rms_level, peak_level = _normalize_and_clean_pcm(audio_bytes)
+            if not pcm_bytes:
+                logger.info(f"[STT-REJECT] Cloud Fallback rejected utterance: duration={duration_sec:.2f}s, RMS={rms_level:.1f}")
+                return None
+
         try:
-            pcm_bytes = audioop.ulaw2lin(audio_bytes, 2)
             wav_io = io.BytesIO()
             with wave.open(wav_io, "wb") as wav_file:
                 wav_file.setnchannels(1)
@@ -202,6 +250,8 @@ class FasterWhisperProvider(SpeechToTextProvider):
                 data = {"model": "whisper-large-v3-turbo"}
                 if language:
                     data["language"] = language
+                if prompt:
+                    data["prompt"] = prompt
                 headers = {"Authorization": f"Bearer {self.api_key}"}
 
                 response = await client.post(
@@ -210,11 +260,24 @@ class FasterWhisperProvider(SpeechToTextProvider):
                     data=data,
                     headers=headers,
                 )
+                latency_ms = (time.perf_counter() - start_time) * 1000.0
+
                 if response.status_code == 200:
                     text = response.json().get("text", "").strip()
                     if text and text not in _SILENCE_TOKENS and len(text) > 2:
-                        logger.info(f"[STT] Cloud Whisper fallback transcribed: '{text}'")
+                        logger.info(
+                            f"[STT-DIAGNOSTICS] Cloud Whisper | duration={duration_sec:.2f}s | RMS={rms_level:.1f} | "
+                            f"peak={peak_level:.1f} | sample_rate=8000Hz | bytes={len(wav_bytes)} | "
+                            f"latency={latency_ms:.1f}ms | prompt='{prompt or ''}' | transcribed: '{text}'"
+                        )
                         return text
+                    else:
+                        logger.info(
+                            f"[STT-DIAGNOSTICS] Cloud Whisper returned empty/silence token | duration={duration_sec:.2f}s | "
+                            f"RMS={rms_level:.1f} | latency={latency_ms:.1f}ms | text='{text}'"
+                        )
+                else:
+                    logger.error(f"[STT] Groq Cloud Whisper API returned status {response.status_code}: {response.text}")
         except Exception as e:
             logger.error(f"[STT] Cloud fallback transcription failed: {e}")
         return None

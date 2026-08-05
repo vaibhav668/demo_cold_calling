@@ -3,6 +3,7 @@ import json
 import asyncio
 import time
 import contextlib
+import collections
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, status
@@ -187,6 +188,7 @@ async def voice_agent_websocket(websocket: WebSocket, session_id: str):
     cancel_event = asyncio.Event()
 
     utterance_buffer = bytearray()
+    pre_speech_ring_buffer = collections.deque(maxlen=15)  # ~300ms pre-speech ring buffer
     last_intermediate_stt_len = 0
     intermediate_stt_task: Optional[asyncio.Task] = None
 
@@ -338,6 +340,10 @@ async def voice_agent_websocket(websocket: WebSocket, session_id: str):
                     vad.reset()
                     continue
 
+                # Maintain 300ms pre-speech ring buffer of audio frames during WAITING state
+                if sm.is_waiting():
+                    pre_speech_ring_buffer.append(mu_law_audio)
+
                 # Normal VAD processing
                 vad_event = await loop.run_in_executor(None, vad.process_frame, mu_law_audio)
 
@@ -347,6 +353,11 @@ async def voice_agent_websocket(websocket: WebSocket, session_id: str):
                 if vad_event == "speech_start":
                     if sm.is_waiting():
                         utterance_buffer.clear()
+                        # Prepopulate ~300ms pre-speech audio from ring buffer to avoid clipping soft speech onset
+                        for chunk in pre_speech_ring_buffer:
+                            utterance_buffer.extend(chunk)
+                        utterance_buffer.extend(mu_law_audio)
+                        pre_speech_ring_buffer.clear()
                         vad.reset()
                         await _send_state_change(CallState.CUSTOMER_SPEAKING)
 
@@ -355,13 +366,24 @@ async def voice_agent_websocket(websocket: WebSocket, session_id: str):
                         await _send_state_change(CallState.TRANSCRIBING)
                         utterance_bytes = bytes(utterance_buffer)
                         utterance_buffer.clear()
+                        pre_speech_ring_buffer.clear()
                         vad.reset()
 
                         await _safe_cancel_task(intermediate_stt_task)
                         intermediate_stt_task = None
 
                         async def _transcribe_and_run(audio: bytes) -> None:
-                            transcript = await stt.transcribe_utterance(audio, language=language_code)
+                            # Build STT prompt context based on current conversation state
+                            conv_state = await sm_manager.get_session_state(session_id) or "GREETING"
+                            if conv_state in ("GREETING", "IDENTITY_COLLECTION"):
+                                stt_prompt = (
+                                    "The user is stating their Indian name. Common names: Vaibhav, Rahul, Aakash, Priya, "
+                                    "Ananya, Akash, Sophia, Maya, David, Arjun, Sharma, Patel, Kumar, Singh, Rao, Verma, Gupta."
+                                )
+                            else:
+                                stt_prompt = "Outbound call conversation regarding hospital appointment or real estate listing."
+
+                            transcript = await stt.transcribe_utterance(audio, language=language_code, prompt=stt_prompt)
                             if not transcript:
                                 await _send_state_change(CallState.WAITING_FOR_CUSTOMER)
                                 return

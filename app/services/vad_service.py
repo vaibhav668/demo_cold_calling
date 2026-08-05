@@ -33,13 +33,13 @@ class LegacyRMSDetector(VoiceActivityDetector):
 
         self.noise_floor = max(50.0, min(800.0, self.noise_floor))
 
-        speech_threshold = max(380.0, self.noise_floor + 250.0)
-        silence_threshold = max(200.0, self.noise_floor + 100.0)
+        speech_threshold = max(180.0, self.noise_floor + 100.0)
+        silence_threshold = max(120.0, self.noise_floor + 40.0)
 
         if not self._in_speech:
             if rms > speech_threshold:
                 self._speech_frames += 1
-                if self._speech_frames >= 3 and not self._speech_confirmed:
+                if self._speech_frames >= 2 and not self._speech_confirmed:
                     self._in_speech = True
                     self._speech_confirmed = True
                     self._silence_frames = 0
@@ -49,7 +49,7 @@ class LegacyRMSDetector(VoiceActivityDetector):
         else:
             if rms < silence_threshold:
                 self._silence_frames += 1
-                if self._silence_frames >= 10:  # Reduced from 20 to 10 (~900ms) for responsive turn-taking
+                if self._silence_frames >= 18:  # 18 frames * 20ms = ~360ms silence buffer to avoid clipping speech/names
                     self._in_speech = False
                     self._speech_frames = 0
                     self._silence_frames = 0

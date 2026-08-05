@@ -13,9 +13,9 @@ HOSPITAL_STATE_GOALS = {
         "Transition tag: [STATE: IDENTITY_COLLECTION] [EXTRACT: customer_name=<name_provided>]"
     ),
     "IDENTITY_COLLECTION": (
-        "Acknowledge the customer's name naturally (e.g. 'Thank you, Rahul. Nice to speak with you.').\n"
-        "Introduce the purpose of the call: you are calling regarding their existing appointment with Dr. Sharma scheduled for tomorrow at 11 AM.\n"
-        "State the details, then pause to let it sink in.\n"
+        "If a clear name was provided by the customer, acknowledge it naturally (e.g. 'Thank you, Rahul. Nice to speak with you.').\n"
+        "Then introduce the purpose of the call: calling regarding their appointment with Dr. Sharma tomorrow at 11 AM.\n"
+        "CRITICAL: If the customer's name is missing, unclear, or mis-heard, do NOT guess or proceed. Politely ask them to repeat: 'I'm sorry, I didn't quite catch your name. May I know whom I'm speaking with?' and use [STATE: IDENTITY_COLLECTION].\n"
         "Transition tag: [STATE: QUALIFICATION]"
     ),
     "QUALIFICATION": (
@@ -64,8 +64,9 @@ REAL_ESTATE_STATE_GOALS = {
         "Transition tag: [STATE: IDENTITY_COLLECTION] [EXTRACT: customer_name=<name_provided>]"
     ),
     "IDENTITY_COLLECTION": (
-        "Acknowledge the customer's name naturally (e.g. 'Thank you, Rahul. Nice to speak with you.').\n"
-        "State the purpose of the call: calling from Skyline Developers because they recently showed interest in your residential listings.\n"
+        "If a clear name was provided by the customer, acknowledge it naturally (e.g. 'Thank you, Rahul. Nice to speak with you.').\n"
+        "Then state the purpose of the call: calling from Skyline Developers regarding residential listings.\n"
+        "CRITICAL: If the customer's name is missing, unclear, or mis-heard, do NOT guess or proceed. Politely ask them to repeat: 'I'm sorry, I didn't quite catch your name. May I know whom I'm speaking with?' and use [STATE: IDENTITY_COLLECTION].\n"
         "Transition tag: [STATE: PURPOSE_INTRODUCTION]"
     ),
     "PURPOSE_INTRODUCTION": (
