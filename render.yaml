@@ -12,7 +12,7 @@ services:
       - key: TTS_PROVIDER
         value: edge_tts
       - key: CHROMA_DB_PATH
-        value: :memory:
+        value: ":memory:"
       - key: GROQ_API_KEY
         sync: false
       - key: OPENROUTER_API_KEY
