@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.env
+.env.*
+.pytest_cache/
+.vscode/
+data/
+models/
+*.raw
+*.wav
+*.mp3

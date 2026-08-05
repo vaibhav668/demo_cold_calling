@@ -1,0 +1,27 @@
+services:
+  # FastAPI public web demo service
+  - type: web
+    name: voice-agent-demo
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: starter
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: TTS_PROVIDER
+        value: edge_tts
+      - key: CHROMA_DB_PATH
+        value: :memory:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: LLM_PROVIDER
+        value: groq
+      - key: FALLBACK_LLM_PROVIDER
+        value: openrouter
+      - key: LOW_MEMORY_DEPLOYMENT
+        value: "true"
+      - key: APP_ENV
+        value: production

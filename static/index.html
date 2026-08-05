@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Voice Agent Demo — ElevenLabs Style</title>
+    <!-- Google Fonts Inter & Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS styles -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+    <div class="bg-glow"></div>
+    
+    <div class="demo-wrapper">
+        <header class="site-header">
+            <div class="logo">
+                <i class="fa-solid fa-microphone-lines"></i>
+                <span>VoiceAgent<span>.AI</span></span>
+            </div>
+            <div class="header-desc">Experience the future of natural conversational AI</div>
+        </header>
+
+        <!-- Main centered container -->
+        <main class="demo-container">
+            <!-- Top config row -->
+            <section class="config-row">
+                <div class="selector-group">
+                    <label for="language-select"><i class="fa-solid fa-earth-americas"></i> Language</label>
+                    <select id="language-select">
+                        <option value="English">English</option>
+                        <option value="Hindi">Hindi (हिंदी)</option>
+                        <option value="Telugu">Telugu (తెలుగు)</option>
+                    </select>
+                </div>
+                
+                <div class="selector-group">
+                    <label for="industry-select"><i class="fa-solid fa-briefcase"></i> Industry Scenario</label>
+                    <select id="industry-select">
+                        <option value="hospital">Hospital Appointment Assistant</option>
+                        <option value="real_estate">Real Estate Sales Consultant</option>
+                    </select>
+                </div>
+            </section>
+
+            <!-- Main presentation grid -->
+            <section class="presentation-grid">
+                <!-- Left Voice Card -->
+                <div class="voice-card glass-panel">
+                    <div class="voice-card-header">
+                        <div id="active-voice-avatar-wrap" class="active-avatar-wrap">
+                            <!-- SVG Avatar will be injected here -->
+                        </div>
+                        <div class="voice-identity">
+                            <div class="voice-name-row">
+                                <h3 id="active-voice-name">Sophia</h3>
+                                <button id="preview-btn" class="preview-btn" title="Listen to Voice Preview">
+                                    <i class="fa-solid fa-play"></i>
+                                </button>
+                            </div>
+                            <span id="active-voice-role" class="badge">Professional Female</span>
+                        </div>
+                    </div>
+                    
+                    <div class="voice-details">
+                        <div class="detail-item">
+                            <label>Supported Languages</label>
+                            <span id="active-voice-langs">English • Hindi • Telugu</span>
+                        </div>
+                        <div class="detail-item">
+                            <label>Personality Profile</label>
+                            <p id="active-voice-desc">Warm, empathetic and conversational voice suitable for healthcare and patient coordination.</p>
+                        </div>
+                    </div>
+
+                    <div class="voice-card-actions">
+                        <button id="mute-btn" class="action-btn-circle" title="Mute Microphone" disabled>
+                            <i class="fa-solid fa-microphone"></i>
+                        </button>
+                        <div class="mic-indicator">
+                            <span class="mic-dot"></span>
+                            <span id="mic-status">Ready</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Center Orbit / AI Orb -->
+                <div class="orbit-arena glass-panel">
+                    <div class="circular-arena">
+                        <!-- Orbit paths -->
+                        <div class="orbit-path path-outer"></div>
+                        
+                        <!-- Center Pulsating Orb -->
+                        <div class="center-orb-wrapper">
+                            <div id="ai-orb" class="orb-pulsar state-disconnected">
+                                <div class="orb-core"></div>
+                                <div class="orb-wave wave-1"></div>
+                                <div class="orb-wave wave-2"></div>
+                                <div class="orb-wave wave-3"></div>
+                            </div>
+                        </div>
+
+                        <!-- 5 Voice circles orbiting around -->
+                        <div id="voice-nodes-container" class="voice-orbit-container">
+                            <!-- Populated dynamically by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Information & Status Card -->
+                <div class="info-card glass-panel">
+                    <div class="info-card-content">
+                        <div class="info-header">
+                            <i class="fa-solid fa-circle-question"></i>
+                            <h4>Scenario Info</h4>
+                        </div>
+                        <p id="scenario-info-text">Book medical appointments naturally, reschedule dates, and answer hospital related FAQs with our automated healthcare receptionist.</p>
+                    </div>
+
+                    <div class="call-status-wrapper">
+                        <label>AI Agent Status</label>
+                        <div id="orb-status-text" class="status-badge status-ready">Ready</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Bottom Button Control -->
+            <section class="control-actions">
+                <button id="start-btn" class="main-action-btn btn-start">
+                    <i class="fa-solid fa-phone"></i> Try AI Voice Agent
+                </button>
+                <button id="end-btn" class="main-action-btn btn-end hidden">
+                    <i class="fa-solid fa-phone-slash"></i> End Conversation
+                </button>
+            </section>
+        </main>
+        
+        <footer class="site-footer">
+            <p>&copy; 2026 VoiceAgent.AI Platform. Built for high performance.</p>
+        </footer>
+    </div>
+
+    <!-- Thank You Modal -->
+    <div id="thank-you-modal" class="modal-overlay hidden">
+        <div class="modal-content glass-panel">
+            <div class="modal-icon">
+                <i class="fa-solid fa-circle-check"></i>
+            </div>
+            <h2>Thank You!</h2>
+            <p>Thank you for trying our conversational AI Voice Agent demo.</p>
+            <div class="modal-buttons">
+                <button id="modal-retry-btn" class="modal-btn primary-btn">Try Again</button>
+                <a href="https://github.com/vaibhav668/demo_cold_calling" target="_blank" class="modal-btn secondary-btn">Contact Sales</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- FontAwesome setup -->
+    <script src="/static/js/voice-agent.js"></script>
+</body>
+</html>

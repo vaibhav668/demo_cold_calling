@@ -1,0 +1,7 @@
+[project]
+name = "demo-cold-calling"
+version = "0.1.0"
+description = "Public browser demo of AI Cold Calling Voice Agent"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
