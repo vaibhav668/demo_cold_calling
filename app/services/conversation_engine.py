@@ -8,6 +8,18 @@ from app.services.prompt_service import PromptService
 from app.services.rag_service import RAGService
 from app.core.logging import logger
 
+def clean_speech_text(text: str) -> str:
+    """Strip markdown formatting, headers, HTML tags, and formatting symbols to prevent reading them."""
+    # Strip markdown bold/italic asterisks
+    text = text.replace("**", "").replace("*", "")
+    # Strip markdown headers (e.g. # Header)
+    text = re.sub(r'#+\s+', '', text)
+    # Strip backticks
+    text = text.replace("`", "")
+    # Strip HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    return text
+
 class ConversationEngine:
     def __init__(self) -> None:
         self.session_manager = SessionManager()
@@ -20,40 +32,11 @@ class ConversationEngine:
             {
                 "type": "function",
                 "function": {
-                    "name": "book_appointment",
-                    "description": "Schedule an appointment or site visit for the customer.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "date": {"type": "string", "description": "ISO date string (YYYY-MM-DD)"},
-                            "time": {"type": "string", "description": "Time string (HH:MM)"}
-                        },
-                        "required": ["date", "time"]
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
                     "name": "transfer_to_human",
                     "description": "Transfer the call to a human operator or sales representative.",
                     "parameters": {
                         "type": "object",
                         "properties": {}
-                    }
-                }
-            },
-            {
-                "type": "function",
-                "function": {
-                    "name": "lookup_knowledge",
-                    "description": "Query the campaign knowledge database for specific details or answers.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string", "description": "Specific query term"}
-                        },
-                        "required": ["query"]
                     }
                 }
             }
@@ -69,134 +52,117 @@ class ConversationEngine:
         user_text: str
     ) -> AsyncGenerator[Tuple[Optional[str], bool, bool], None]:
         """
-        Streaming turn execution loop.
+        State-driven conversation turn execution loop.
         Yields (text_token, should_hangup, should_transfer) progressively.
         """
+        # 1. Retrieve current state and collected info from session manager
+        state = await self.session_manager.get_session_state(call_id) or "GREETING"
+        meta = await self.session_manager.get_session_metadata(call_id) or {}
+        collected_info = meta.get("collected_info", {})
+
+        # Retrieve dialogue history (keeping it clean of raw system templates)
         history = await self.session_manager.get_message_history(call_id)
-        state = await self.session_manager.get_session_state(call_id) or "greeting"
+        history_dialogue = [m for m in history if m["role"] in ("user", "assistant")]
 
-        # 1. Initialize session if empty
-        if not history:
-            compiled_prompt, _ = await self.prompt_service.build_prompt(
-                campaign_id=campaign_id,
-                industry=industry,
-                language=language,
-                agent_name=agent_name,
-                rag_query=user_text
-            )
-            history.append({"role": "system", "content": compiled_prompt})
-            await self.session_manager.append_message(call_id, history[-1])
+        # 2. Append user input if it's not the initial call start
+        if user_text != "[CALL_START]":
+            user_turn = {"role": "user", "content": user_text}
+            history_dialogue.append(user_turn)
+            await self.session_manager.append_message(call_id, user_turn)
 
-        # 2. Append user input
-        is_greeting = (user_text == "[CALL_START]")
-        if is_greeting:
-            history.append({
-                "role": "system",
-                "content": (
-                    "[CALL_START] The call just connected. Greet the customer warmly, "
-                    "introduce yourself naturally as a representative of CityCare Hospital or Skyline Developers "
-                    "based on your system template, and ask for the customer's name to verify whom you are speaking with. "
-                    "Do NOT explain the reason for the call, mention appointments, or discuss properties yet. "
-                    "Follow the exact greeting example: Greeting -> Introduction -> Ask customer name."
-                )
-            })
-            user_text_for_llm = "[Please begin with your greeting now.]"
-        else:
-            user_text_for_llm = user_text
+        # 3. Build dynamic prompt for the current turn based on state and variables
+        compiled_prompt, _ = await self.prompt_service.build_prompt(
+            campaign_id=campaign_id,
+            industry=industry,
+            language=language,
+            agent_name=agent_name,
+            current_state=state,
+            collected_info=collected_info,
+            rag_query=user_text
+        )
 
-        user_turn = {"role": "user", "content": user_text_for_llm}
-        history.append(user_turn)
-        await self.session_manager.append_message(call_id, user_turn)
+        messages_to_send = [{"role": "system", "content": compiled_prompt}] + history_dialogue
+        if user_text == "[CALL_START]":
+            messages_to_send.append({"role": "user", "content": "[Please begin with your outbound greeting now.]"})
 
-        # 3. Agentic tool-call loop
+        # 4. Stream completion and intercept tags dynamically
         should_hangup = False
         should_transfer = False
-        loop_limit = 3
-        full_content_accumulator = []
-        active_tools = None if is_greeting else self._get_tools_schema()
+        full_text_accumulator = []
+        tag_buffer = ""
+        in_tag = False
+        tool_calls_detected = None
+        active_tools = self._get_tools_schema()
 
-        while loop_limit > 0:
-            tool_calls_detected = None
-
-            async for text_chunk, t_calls in self.llm_service.generate_completion_stream(history, active_tools):
-                if t_calls:
-                    tool_calls_detected = t_calls
-                    break
-                if text_chunk:
-                    full_content_accumulator.append(text_chunk)
-                    yield text_chunk, False, False
-
-            if not tool_calls_detected:
+        async for text_chunk, t_calls in self.llm_service.generate_completion_stream(messages_to_send, active_tools):
+            if t_calls:
+                tool_calls_detected = t_calls
                 break
 
-            # Process tool execution
-            tool_calls_message = {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": tool_calls_detected
-            }
-            history.append(tool_calls_message)
-            await self.session_manager.append_message(call_id, tool_calls_message)
-
-            for tool_call in tool_calls_detected:
-                tool_id = tool_call.get("id")
-                func_data = tool_call.get("function", {})
-                func_name = func_data.get("name")
-                args = {}
-                try:
-                    args = json.loads(func_data.get("arguments", "{}"))
-                except Exception:
-                    pass
-
-                tool_result_content = ""
-                if func_name == "book_appointment":
-                    state = "appointment_booked"
-                    await self.session_manager.update_session_state(call_id, state)
-                    tool_result_content = f"Appointment successfully scheduled for {args.get('date')} at {args.get('time')}."
-                elif func_name == "transfer_to_human":
-                    state = "escalated"
-                    await self.session_manager.update_session_state(call_id, state)
-                    should_transfer = True
-                    tool_result_content = "Call transfer successfully initiated."
-                elif func_name == "lookup_knowledge":
-                    query = args.get("query", "")
-                    facts = await self.rag_service.search_knowledge(campaign_id, query, limit=2)
-                    facts_list = [f["text"] for f in facts]
-                    tool_result_content = json.dumps({"facts": facts_list})
+            if text_chunk:
+                # Intercept tags starting with '['
+                if "[" in text_chunk:
+                    in_tag = True
+                    parts = text_chunk.split("[", 1)
+                    if parts[0]:
+                        clean_chunk = clean_speech_text(parts[0])
+                        if clean_chunk:
+                            full_text_accumulator.append(clean_chunk)
+                            yield clean_chunk, False, False
+                    tag_buffer += "[" + parts[1]
+                elif in_tag:
+                    tag_buffer += text_chunk
                 else:
-                    tool_result_content = f"Error: Tool '{func_name}' not implemented."
+                    clean_chunk = clean_speech_text(text_chunk)
+                    if clean_chunk:
+                        full_text_accumulator.append(clean_chunk)
+                        yield clean_chunk, False, False
 
-                tool_response = {
-                    "role": "tool",
-                    "tool_call_id": tool_id,
-                    "name": func_name,
-                    "content": tool_result_content
-                }
-                history.append(tool_response)
-                await self.session_manager.append_message(call_id, tool_response)
+        # 5. Handle tool executions (e.g. transfer to human)
+        if tool_calls_detected:
+            for tool_call in tool_calls_detected:
+                func_name = tool_call.get("function", {}).get("name")
+                if func_name == "transfer_to_human":
+                    should_transfer = True
+                    logger.info(f"[CONV-CONTROLLER] Escalation tool called for session {call_id}")
 
-            loop_limit -= 1
+        # 6. Parse and extract next state and details from tag buffer
+        next_state = None
+        extracted_vars = {}
 
-        full_text = "".join(full_content_accumulator).strip()
-        if full_text:
-            bot_turn = {"role": "assistant", "content": full_text}
-            history.append(bot_turn)
+        state_match = re.search(r'\[STATE:\s*(\w+)\]', tag_buffer)
+        if state_match:
+            next_state = state_match.group(1).upper()
+
+        extract_matches = re.findall(r'\[EXTRACT:\s*([^\]]+)\]', tag_buffer)
+        for ext in extract_matches:
+            pairs = re.findall(r'(\w+)\s*=\s*([^,\]]+)', ext)
+            for k, v in pairs:
+                extracted_vars[k.strip().lower()] = v.strip()
+
+        # Update controller state
+        if next_state:
+            await self.session_manager.update_session_state(call_id, next_state)
+            logger.info(f"[CONV-CONTROLLER] Session {call_id} state transition: {state} -> {next_state}")
+        
+        # Update metadata details
+        if extracted_vars:
+            updated_info = dict(collected_info)
+            updated_info.update(extracted_vars)
+            await self.session_manager.update_session_metadata(call_id, {"collected_info": updated_info})
+            logger.info(f"[CONV-CONTROLLER] Session {call_id} extracted details: {extracted_vars}")
+
+        # Append assistant speech response to conversation history
+        full_assistant_text = "".join(full_text_accumulator).strip()
+        if full_assistant_text:
+            bot_turn = {"role": "assistant", "content": full_assistant_text}
             await self.session_manager.append_message(call_id, bot_turn)
 
-        # Evaluate hangup condition
-        low_content = full_text.lower()
-        assistant_turns = sum(1 for m in history if m.get("role") == "assistant")
-        FAREWELL_RE = re.compile(
-            r'\b(goodbye for now|have a great day|take care, goodbye|'
-            r'thanks for calling, goodbye|thank you for calling, goodbye|'
-            r'have a wonderful day|is there anything else before we go)\b'
-        )
-        if FAREWELL_RE.search(low_content) and assistant_turns >= 2:
-            should_hangup = True
-        elif state == "completed":
-            should_hangup = True
-
-        if state == "escalated":
-            should_transfer = True
+        # 7. Evaluate completion / hangup conditions
+        low_text = full_assistant_text.lower()
+        if state == "CLOSING" or next_state == "CLOSING":
+            # Hang up after closing remarks (e.g. contains goodbye triggers)
+            if any(farewell in low_text for farewell in ["goodbye", "bye", "take care", "wonderful day"]):
+                should_hangup = True
 
         yield None, should_hangup, should_transfer
