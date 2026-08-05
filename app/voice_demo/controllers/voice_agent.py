@@ -373,22 +373,34 @@ async def voice_agent_websocket(websocket: WebSocket, session_id: str):
                         intermediate_stt_task = None
 
                         async def _transcribe_and_run(audio: bytes) -> None:
-                            # Build STT prompt context based on current conversation state
-                            conv_state = await sm_manager.get_session_state(session_id) or "GREETING"
-                            if conv_state in ("GREETING", "IDENTITY_COLLECTION"):
-                                stt_prompt = (
-                                    "The user is stating their Indian name. Common names: Vaibhav, Rahul, Aakash, Priya, "
-                                    "Ananya, Akash, Sophia, Maya, David, Arjun, Sharma, Patel, Kumar, Singh, Rao, Verma, Gupta."
-                                )
-                            else:
-                                stt_prompt = "Outbound call conversation regarding hospital appointment or real estate listing."
+                            try:
+                                sess_mgr = SessionManager()
+                                conv_state = await sess_mgr.get_session_state(session_id) or "GREETING"
+                                if conv_state in ("GREETING", "IDENTITY_COLLECTION"):
+                                    stt_prompt = (
+                                        "The user is stating their Indian name. Common names: Vaibhav, Rahul, Aakash, Priya, "
+                                        "Ananya, Akash, Sophia, Maya, David, Arjun, Sharma, Patel, Kumar, Singh, Rao, Verma, Gupta."
+                                    )
+                                else:
+                                    stt_prompt = "Outbound call conversation regarding hospital appointment or real estate listing."
 
-                            transcript = await stt.transcribe_utterance(audio, language=language_code, prompt=stt_prompt)
-                            if not transcript:
-                                await _send_state_change(CallState.WAITING_FOR_CUSTOMER)
-                                return
+                                logger.info(f"[STAGE-1: STT-START] Session={session_id} | State={conv_state} | Audio={len(audio)} bytes")
+                                transcript = await stt.transcribe_utterance(audio, language=language_code, prompt=stt_prompt)
 
-                            await _fire_pipeline(transcript)
+                                if not transcript:
+                                    logger.warning(f"[STAGE-1: STT-EMPTY] Session={session_id} | No transcript returned. Recovering to WAITING_FOR_CUSTOMER.")
+                                    await _send_state_change(CallState.WAITING_FOR_CUSTOMER)
+                                    return
+
+                                logger.info(f"[STAGE-2: DISPATCH-PIPELINE] Session={session_id} | State={conv_state} | Transcript='{transcript}'")
+                                await _fire_pipeline(transcript)
+                            except Exception as e:
+                                logger.error(f"[STAGE-FAILSAFE] Exception in _transcribe_and_run for {session_id}: {e}", exc_info=True)
+                                # Fail-safe recovery: Never freeze in TRANSCRIBING state
+                                try:
+                                    await _send_state_change(CallState.WAITING_FOR_CUSTOMER)
+                                except Exception:
+                                    pass
 
                         await _safe_cancel_task(pipeline_task)
                         pipeline_task = asyncio.create_task(_transcribe_and_run(utterance_bytes))

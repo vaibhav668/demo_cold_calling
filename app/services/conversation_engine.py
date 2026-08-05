@@ -161,17 +161,30 @@ class ConversationEngine:
             logger.info(f"[CONV-CONTROLLER] Session {call_id} state transition: {state} -> {next_state}")
         
         # Update metadata details
+        updated_info = dict(collected_info)
         if extracted_vars:
-            updated_info = dict(collected_info)
             updated_info.update(extracted_vars)
             await self.session_manager.update_session_metadata(call_id, {"collected_info": updated_info})
-            logger.info(f"[CONV-CONTROLLER] Session {call_id} extracted details: {extracted_vars}")
 
         # Append assistant speech response to conversation history
         full_assistant_text = "".join(full_text_accumulator).strip()
         if full_assistant_text:
             bot_turn = {"role": "assistant", "content": full_assistant_text}
             await self.session_manager.append_message(call_id, bot_turn)
+
+        # Structured Stage Telemetry Logging
+        logger.info(
+            f"\n-------------------- [STAGE-3/4/5 TELEMETRY] --------------------\n"
+            f"Session ID:      {call_id}\n"
+            f"Current State:   {state}\n"
+            f"Transcript:      '{user_text}'\n"
+            f"Extracted Name:  {extracted_vars.get('customer_name', 'None')}\n"
+            f"Extracted Vars:  {extracted_vars}\n"
+            f"Next State:      {next_state or state}\n"
+            f"Session Info:    {updated_info}\n"
+            f"AI Spoke:        '{full_assistant_text}'\n"
+            f"------------------------------------------------------------------"
+        )
 
         # 7. Evaluate completion / hangup conditions
         # Deterministic: if LLM tagged the next state as END_CALL, hang up immediately.
