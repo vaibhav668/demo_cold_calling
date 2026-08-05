@@ -53,6 +53,12 @@ class FasterWhisperProvider(SpeechToTextProvider):
 
     @classmethod
     async def _get_model(cls, model_size: str):
+        from app.core.config import check_low_memory
+        if check_low_memory():
+            logger.info("[STT] Low-memory deployment detected. Bypassing local FasterWhisper initialization to conserve memory. Using cloud STT fallback.")
+            cls._model_instance = "FAILED"
+            return "FAILED"
+
         if cls._model_instance is not None:
             return cls._model_instance
 
@@ -112,6 +118,11 @@ class FasterWhisperProvider(SpeechToTextProvider):
 
     @classmethod
     async def warmup(cls, model_size: str = "tiny") -> float:
+        from app.core.config import check_low_memory
+        if check_low_memory():
+            logger.info("[WARMUP] Low memory environment: skipping local FasterWhisper warmup.")
+            return 0.0
+
         import time
         start_t = time.perf_counter()
         logger.info(f"[WARMUP] Eagerly warming up FasterWhisper singleton ('{model_size}')...")
