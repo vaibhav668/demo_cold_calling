@@ -49,7 +49,7 @@ class LegacyRMSDetector(VoiceActivityDetector):
         else:
             if rms < silence_threshold:
                 self._silence_frames += 1
-                if self._silence_frames >= 20:
+                if self._silence_frames >= 10:  # Reduced from 20 to 10 (~900ms) for responsive turn-taking
                     self._in_speech = False
                     self._speech_frames = 0
                     self._silence_frames = 0
@@ -67,17 +67,21 @@ class LegacyRMSDetector(VoiceActivityDetector):
 
 class EndOfSpeechDetector:
     def __init__(self) -> None:
-        provider_name = settings.VAD_PROVIDER.lower()
-        self.provider: VoiceActivityDetector = None
+        from app.core.config import check_low_memory
         self._fallback_provider = LegacyRMSDetector()
 
-        if provider_name == "silero":
-            self.provider = SileroVADProvider()
-            if self.provider.model is None or self.provider.model == "FAILED":
-                logger.warning("[VAD] Silero VAD failed. Falling back to dynamic RMS VAD.")
-                self.provider = self._fallback_provider
-        else:
+        if check_low_memory():
+            logger.info("[VAD] Low memory deployment detected. Forcing lightweight Legacy RMS VAD to conserve CPU/RAM.")
             self.provider = self._fallback_provider
+        else:
+            provider_name = settings.VAD_PROVIDER.lower()
+            if provider_name == "silero":
+                self.provider = SileroVADProvider()
+                if self.provider.model is None or self.provider.model == "FAILED":
+                    logger.warning("[VAD] Silero VAD failed. Falling back to dynamic RMS VAD.")
+                    self.provider = self._fallback_provider
+            else:
+                self.provider = self._fallback_provider
 
     def process_frame(self, audio_chunk: bytes) -> Optional[str]:
         return self.provider.process_frame(audio_chunk)
