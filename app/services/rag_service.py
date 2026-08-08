@@ -5,6 +5,11 @@ import re
 from typing import List, Dict, Any
 from app.core.config import check_low_memory
 from app.core.logging import logger
+chroma_manager = None
+try:
+    from app.db.chroma import chroma_manager
+except ImportError:
+    pass
 
 COLLECTION_NAME = "knowledge_base"
 
@@ -29,6 +34,26 @@ DEMO_FACTS = {
     ]
 }
 
+def chunk_text(text: str, chunk_size: int = 500, chunk_overlap: int = 50) -> List[str]:
+    """Split text into overlapping character-based chunks."""
+    chunks = []
+    start = 0
+    text_len = len(text)
+    
+    if text_len == 0:
+        return []
+        
+    while start < text_len:
+        end = min(start + chunk_size, text_len)
+        chunk = text[start:end]
+        chunks.append(chunk)
+        
+        start += chunk_size - chunk_overlap
+        if chunk_size <= chunk_overlap:
+            break
+            
+    return chunks
+
 class RAGService:
     _client = None
     _collection = None
@@ -49,38 +74,14 @@ class RAGService:
         return cls._client
 
     async def initialize_collection(self) -> None:
-        """Initialize ChromaDB only if not under strict memory constraints."""
-        if check_low_memory():
-            logger.info("[RAG] Low memory deployment detected. Skipping ChromaDB / Embedding initialization completely.")
-            return
-
-        async with self._init_lock:
-            if self._collection is not None:
-                return
-
-            client = self.get_client()
-            loop = asyncio.get_event_loop()
-
-            def load_and_seed():
-                try:
-                    collection = client.get_or_create_collection(name=COLLECTION_NAME)
-                except Exception as e:
-                    logger.warning(f"[RAG] Dimension check: deleting collection and recreating: {e}")
-                    client.delete_collection(name=COLLECTION_NAME)
-                    collection = client.get_or_create_collection(name=COLLECTION_NAME)
-                return collection
-
-            self._collection = await loop.run_in_executor(None, load_and_seed)
-            
-            def check_empty():
-                return self._collection.count() == 0
-
-            is_empty = await loop.run_in_executor(None, check_empty)
-            if is_empty:
-                logger.info("[RAG] Seeding ChromaDB with demo campaign facts...")
-                for campaign_key, facts in DEMO_FACTS.items():
-                    campaign_id = uuid.uuid5(uuid.NAMESPACE_DNS, campaign_key)
-                    await self.index_facts(campaign_id, campaign_key, facts)
+        """
+        For the browser demo, we have a fixed set of 13 hardcoded facts.
+        There is NO need to load ChromaDB or a sentence-transformers embedding model.
+        All RAG queries use fast keyword matching via search_knowledge().
+        Skip ChromaDB/embedding initialization entirely to save 10-60s of startup time.
+        """
+        logger.info("[RAG] Demo mode: using in-memory keyword matching. Skipping ChromaDB/embedding init.")
+        return
 
     async def index_facts(self, campaign_id: uuid.UUID, filename: str, facts: List[str]) -> None:
         if check_low_memory():
@@ -115,87 +116,144 @@ class RAGService:
         await loop.run_in_executor(None, insert_data)
         logger.info(f"[RAG] Indexed {len(facts)} facts for campaign {filename}")
 
+    async def index_document(
+        self,
+        campaign_id: uuid.UUID,
+        document_id: uuid.UUID,
+        filename: str,
+        text: str
+    ) -> int:
+        """Chunks document text, generates embeddings, and upserts points to ChromaDB."""
+        client = chroma_manager.get_client() if chroma_manager is not None else None
+        if client is None:
+            return 0
+        
+        chunks = chunk_text(text)
+        if not chunks:
+            return 0
+            
+        logger.info(f"Indexing document '{filename}' into ChromaDB with {len(chunks)} chunks...")
+        
+        if self.embedding_service is None:
+            from app.services.embedding_service import EmbeddingService
+            self.embedding_service = EmbeddingService()
+            
+        embeddings = await self.embedding_service.get_embeddings(chunks)
+        
+        collection = client.get_or_create_collection(name=COLLECTION_NAME)
+        
+        ids = []
+        metadatas = []
+        documents = []
+        
+        for idx, (chunk, vector) in enumerate(zip(chunks, embeddings)):
+            point_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{document_id}_{idx}"))
+            ids.append(point_id)
+            metadatas.append({
+                "campaign_id": str(campaign_id),
+                "document_id": str(document_id),
+                "filename": filename,
+                "chunk_index": idx
+            })
+            documents.append(chunk)
+            
+        try:
+            collection.add(
+                ids=ids,
+                embeddings=embeddings,
+                metadatas=metadatas,
+                documents=documents
+            )
+            return len(chunks)
+        except Exception as e:
+            logger.error(f"Failed to upsert points to ChromaDB: {e}")
+            return len(chunks)
+
+    async def delete_document_vectors(self, document_id: uuid.UUID) -> None:
+        """Purge vectors from ChromaDB for a specific document."""
+        client = chroma_manager.get_client() if chroma_manager is not None else None
+        if client is None:
+            return
+        try:
+            collection = client.get_or_create_collection(name=COLLECTION_NAME)
+            collection.delete(where={"document_id": str(document_id)})
+            logger.info(f"Purged ChromaDB vectors for document ID {document_id}")
+        except Exception as e:
+            logger.error(f"Failed to delete document vectors from ChromaDB: {e}")
+
     async def search_knowledge(
         self,
         campaign_id: uuid.UUID,
         query: str,
         limit: int = 3
     ) -> List[Dict[str, Any]]:
-        """Perform semantic search, falling back to light keyword matching in low memory modes."""
-        
-        # 1. Low-Memory Fallback: Simple Word Overlap Matching
-        if check_low_memory():
-            # Clean and split query words
-            query_words = set(re.findall(r'\w+', query.lower()))
-            if not query_words:
-                return []
-            
-            # Map campaign_id back to campaign key string
-            campaign_key = None
-            for key in ["hospital", "real_estate"]:
-                if str(uuid.uuid5(uuid.NAMESPACE_DNS, key)) == str(campaign_id):
-                    campaign_key = key
-                    break
-            
-            if not campaign_key:
-                return []
-
-            facts = DEMO_FACTS.get(campaign_key, [])
-            scored_results = []
-
-            for idx, fact in enumerate(facts):
-                fact_words = set(re.findall(r'\w+', fact.lower()))
-                overlap = len(query_words.intersection(fact_words))
-                if overlap > 0:
-                    # Calculate simple Jaccard-like or overlap ratio score
-                    score = overlap / len(query_words.union(fact_words))
-                    scored_results.append({
-                        "text": fact,
-                        "score": score,
-                        "filename": campaign_key,
-                        "chunk_index": idx
-                    })
-
-            # Sort by highest match score
-            scored_results.sort(key=lambda x: x["score"], reverse=True)
-            return scored_results[:limit]
-
-        # 2. Standard ChromaDB Semantic Search Path
-        if self._collection is None:
-            await self.initialize_collection()
-
-        if self.embedding_service is None:
-            from app.services.embedding_service import EmbeddingService
-            self.embedding_service = EmbeddingService()
-
-        query_vector = await self.embedding_service.get_query_embedding(query)
-        loop = asyncio.get_event_loop()
-
-        def query_chroma():
-            return self._collection.query(
-                query_embeddings=[query_vector],
-                n_results=limit,
-                where={"campaign_id": str(campaign_id)}
-            )
-
-        try:
-            results = await loop.run_in_executor(None, query_chroma)
-            formatted_results = []
-            if results and "documents" in results and results["documents"]:
-                documents = results["documents"][0]
-                ids = results["ids"][0]
-                metadatas = results["metadatas"][0]
-                distances = results.get("distances", [[]])[0]
+        """
+        Fast semantic search on ChromaDB knowledge base filtered by campaign metadata,
+        with a fallback to keyword-based fact retrieval from DEMO_FACTS if ChromaDB client is unavailable.
+        """
+        client = chroma_manager.get_client() if chroma_manager is not None else None
+        if client is not None:
+            if self.embedding_service is None:
+                from app.services.embedding_service import EmbeddingService
+                self.embedding_service = EmbeddingService()
+            try:
+                query_vector = await self.embedding_service.get_query_embedding(query)
+                collection = client.get_or_create_collection(name=COLLECTION_NAME)
+                results = collection.query(
+                    query_embeddings=[query_vector],
+                    n_results=limit,
+                    where={"campaign_id": str(campaign_id)}
+                )
                 
-                for idx, (doc, doc_id, meta) in enumerate(zip(documents, ids, metadatas)):
-                    score = 1.0 - distances[idx] if idx < len(distances) else 1.0
-                    formatted_results.append({
-                        "text": doc,
-                        "score": score,
-                        "filename": meta.get("filename", ""),
-                        "chunk_index": meta.get("chunk_index", 0)
-                    })
-            return formatted_results
-        except Exception as e:
-            logger.error(f"[RAG] Failed to execute semantic search: {e}")
+                formatted_results = []
+                if results and "documents" in results and results["documents"]:
+                    documents = results["documents"][0]
+                    ids = results["ids"][0]
+                    metadatas = results["metadatas"][0]
+                    distances = results.get("distances", [[]])[0]
+                    
+                    for idx, (doc, doc_id, meta) in enumerate(zip(documents, ids, metadatas)):
+                        score = 1.0 - distances[idx] if idx < len(distances) else 1.0
+                        formatted_results.append({
+                            "text": doc,
+                            "score": score,
+                            "document_id": uuid.UUID(meta.get("document_id")) if meta.get("document_id") else uuid.uuid4(),
+                            "filename": meta.get("filename", ""),
+                            "chunk_index": meta.get("chunk_index", 0)
+                        })
+                return formatted_results
+            except Exception as e:
+                logger.error(f"Failed to query ChromaDB, falling back to keyword search: {e}")
+
+        # Fallback to keyword-based search
+        query_words = set(re.findall(r'\w+', query.lower()))
+        if not query_words:
             return []
+
+        # Map campaign_id back to campaign key string
+        campaign_key = None
+        for key in DEMO_FACTS:
+            if str(uuid.uuid5(uuid.NAMESPACE_DNS, key)) == str(campaign_id):
+                campaign_key = key
+                break
+
+        if not campaign_key:
+            return []
+
+        facts = DEMO_FACTS.get(campaign_key, [])
+        scored_results = []
+
+        for idx, fact in enumerate(facts):
+            fact_words = set(re.findall(r'\w+', fact.lower()))
+            overlap = len(query_words.intersection(fact_words))
+            if overlap > 0:
+                score = overlap / len(query_words.union(fact_words))
+                scored_results.append({
+                    "text": fact,
+                    "score": score,
+                    "filename": campaign_key,
+                    "chunk_index": idx
+                })
+
+        scored_results.sort(key=lambda x: x["score"], reverse=True)
+        return scored_results[:limit]

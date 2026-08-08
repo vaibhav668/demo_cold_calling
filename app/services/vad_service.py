@@ -49,7 +49,7 @@ class LegacyRMSDetector(VoiceActivityDetector):
         else:
             if rms < silence_threshold:
                 self._silence_frames += 1
-                if self._silence_frames >= 18:  # 18 frames * 20ms = ~360ms silence buffer to avoid clipping speech/names
+                if self._silence_frames >= 25:  # 25 frames * 20ms = ~500ms silence — prevent early cutoffs
                     self._in_speech = False
                     self._speech_frames = 0
                     self._silence_frames = 0
@@ -94,3 +94,12 @@ class EndOfSpeechDetector:
         if isinstance(self.provider, SileroVADProvider):
             return self.provider.is_speaking
         return self._fallback_provider._in_speech
+
+class VADService:
+    """Legacy single-frame check kept for backwards compatibility."""
+
+    def __init__(self, threshold: float = 380.0) -> None:
+        self.threshold = threshold
+
+    def is_speech(self, audio_chunk: bytes) -> bool:
+        return _rms_ulaw(audio_chunk) > self.threshold

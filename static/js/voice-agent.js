@@ -576,7 +576,9 @@ function playMulaw(arrayBuffer) {
     src.connect(playbackContext.destination);
 
     const now = playbackContext.currentTime;
-    if (nextPlayTime < now + 0.02) nextPlayTime = now + 0.02;
+    if (nextPlayTime < now + 0.02) {
+        nextPlayTime = now + 0.05; // 50ms safety lookahead jitter buffer
+    }
     src.start(nextPlayTime);
     nextPlayTime += buf.duration;
 

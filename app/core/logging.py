@@ -49,5 +49,12 @@ def setup_logging() -> None:
     console_handler.setFormatter(formatter)
     root_logger.addHandler(console_handler)
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    
+    # Silence extremely verbose third-party debug loggers
+    for logger_name in [
+        "numba", "urllib3", "chromadb", "httpcore", "onnxruntime", "mpmath",
+        "torio._extension.utils", "torio", "torchaudio"
+    ]:
+        logging.getLogger(logger_name).setLevel(logging.ERROR)
 
 logger = logging.getLogger("app")

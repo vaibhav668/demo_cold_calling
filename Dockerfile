@@ -5,6 +5,7 @@ WORKDIR /build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    libpq-dev \
     git \
     && rm -rf /var/lib/apt/lists/*
 
@@ -15,14 +16,20 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install MeloTTS; all required deps (pypinyin, jieba, mecab, etc.) are in requirements.txt
+RUN pip install --no-cache-dir cn2an==0.5.22 || pip install --no-cache-dir cn2an
+RUN pip install --no-cache-dir git+https://github.com/myshell-ai/MeloTTS.git
+
 # ─── Stage 2: Final ───────────────────────────────────────────────────────────
 FROM python:3.11-slim AS final
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
     curl \
     ffmpeg \
+    espeak-ng \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy venv from builder

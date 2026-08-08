@@ -15,6 +15,7 @@ class SpeechService:
     @classmethod
     async def warmup(cls) -> float:
         provider = FasterWhisperProvider()
+        # Pass the actual production model size so warmup pre-caches the real model
         return await FasterWhisperProvider.warmup(provider.model_size)
 
     async def transcribe_utterance(
