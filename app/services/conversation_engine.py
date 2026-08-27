@@ -1011,7 +1011,7 @@ def is_hospital_knowledge_query(text: str) -> bool:
     ]
     
     return any(pat in t_low for pat in query_patterns)
-
+ 
 
 def validate_tool_call(
     industry: str,

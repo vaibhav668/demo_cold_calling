@@ -610,18 +610,27 @@ function autoAdaptVoicesForLangAndIndustry() {
 // ─────────────────────────────────────────────────────────────────────────────
 async function ensureAudioContexts() {
     if (!captureContext) {
-        captureContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+        captureContext = new (window.AudioContext || window.webkitAudioContext)();
     }
     if (captureContext.state === "suspended") {
         await captureContext.resume();
     }
 
     if (!playbackContext) {
-        playbackContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+        playbackContext = new (window.AudioContext || window.webkitAudioContext)();
     }
     if (playbackContext.state === "suspended") {
         await playbackContext.resume();
     }
+
+    // Instantly wake up mobile & desktop hardware DAC audio route with a silent warmup buffer
+    try {
+        const warmBuf = playbackContext.createBuffer(1, 1, playbackContext.sampleRate);
+        const warmSrc = playbackContext.createBufferSource();
+        warmSrc.buffer = warmBuf;
+        warmSrc.connect(playbackContext.destination);
+        warmSrc.start(0);
+    } catch (_) {}
 
     audioContextStarted = true;
     nextPlayTime = 0;
@@ -887,7 +896,9 @@ function stopKeepalive() {
 // ─────────────────────────────────────────────────────────────────────────────
 function playPcmAudio(arrayBuffer) {
     if (!playbackContext || !audioContextStarted) return;
-    if (playbackContext.state === "suspended") playbackContext.resume();
+    if (playbackContext.state === "suspended") {
+        playbackContext.resume().catch(() => {});
+    }
 
     // 24kHz 16-bit Linear PCM (pcm_s16le)
     const int16 = new Int16Array(arrayBuffer);
@@ -905,14 +916,14 @@ function playPcmAudio(arrayBuffer) {
 
     const now = playbackContext.currentTime;
     const gapMs = (now - nextPlayTime) * 1000.0;
-    if (nextPlayTime > 0 && gapMs > 30) {
-        console.warn(`[TTS-FLOW-BROWSER] playback_gap_ms=${gapMs.toFixed(1)}ms > 30ms limit!`);
+    if (nextPlayTime > 0 && gapMs > 40) {
+        console.warn(`[TTS-FLOW-BROWSER] playback_gap_ms=${gapMs.toFixed(1)}ms > 40ms limit!`);
     }
 
-    // Continuous gapless scheduling: schedule next chunk immediately at nextPlayTime
-    // If nextPlayTime is in the past, align with currentTime + 5ms minimal lookahead
-    if (nextPlayTime < now + 0.005) {
-        nextPlayTime = now + 0.005;
+    // Continuous gapless scheduling:
+    // If starting fresh or recovering from pause, use a safe 35ms initial lookahead for hardware synchronization
+    if (nextPlayTime < now + 0.035) {
+        nextPlayTime = now + 0.035;
     }
     src.start(nextPlayTime);
     nextPlayTime += buf.duration;
