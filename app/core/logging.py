@@ -34,6 +34,7 @@ def setup_logging() -> None:
         
     log_level = logging.DEBUG if settings.DEBUG else logging.INFO
     root_logger.setLevel(log_level)
+
     
     console_handler = logging.StreamHandler(sys.stdout)
     if settings.is_production:

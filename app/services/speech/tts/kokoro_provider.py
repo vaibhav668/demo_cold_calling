@@ -46,39 +46,166 @@ def transliterate_telugu(text: str) -> str:
     return transliterated
 
 
-# Simple Hindi mapping to English phonetics (for reading Hindi in English voice)
-_HINDI_MAP = {
-    'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ऋ': 'ri',
-    'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'अं': 'an', 'अः': 'ah',
-    'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'ृ': 'ri',
-    'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ं': 'n', 'ः': 'h',
-    '्': '', # Devanagari halant/virama maps to empty string to drop inherent vowel
-    '।': '.', # Devanagari danda maps to period
-    'क': 'ka', 'ख': 'kha', 'ग': 'ga', 'घ': 'gha', 'ङ': 'nga',
-    'च': 'cha', 'छ': 'chha', 'ज': 'ja', 'झ': 'jha', 'ञ': 'nya',
-    'ट': 'ta', 'ठ': 'tha', 'ड': 'da', 'ढ': 'dha', 'ण': 'na',
-    'त': 'ta', 'थ': 'tha', 'द': 'da', 'ध': 'dha', 'न': 'na',
-    'प': 'pa', 'फ': 'pha', 'ब': 'ba', 'भ': 'bha', 'म': 'ma',
-    'य': 'ya', 'र': 'ra', 'ल': 'la', 'व': 'va', 'श': 'sha',
-    'ष': 'sha', 'स': 'sa', 'ह': 'ha', 'ळ': 'la', 'क्ष': 'ksha',
-    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4', '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
-    ' ': ' '
+# Dictionary for conversational Hinglish transliteration (Devanagari -> Hinglish)
+_HINDI_WORD_MAP = {
+    'नमस्ते': 'Namaste',
+    'सिटीकेयर': 'CityCare',
+    'हॉस्पिटल': 'Hospital',
+    'स्काईलाइन': 'Skyline',
+    'डेवलपर्स': 'Developers',
+    'अपॉइंटमेंट': 'appointment',
+    'डॉ.': 'Doctor',
+    'डॉक्टर': 'Doctor',
+    'शर्मा': 'Sharma',
+    'कन्फर्म': 'confirm',
+    'रीशेड्यूल': 'reschedule',
+    'कैंसिल': 'cancel',
+    'बात': 'baat',
+    'कर': 'kar',
+    'रही': 'rahi',
+    'रहा': 'raha',
+    'हूँ': 'hoon',
+    'है': 'hai',
+    'क्या': 'kya',
+    'मैं': 'main',
+    'आपका': 'aapka',
+    'नाम': 'naam',
+    'जान': 'jaan',
+    'सकती': 'sakti',
+    'सकता': 'sakta',
+    'धन्यवाद': 'Dhanyavaad',
+    'बहुत': 'bahut',
+    'बढ़िया': 'badhiya',
+    'बिल्कुल': 'bilkul',
+    'समझती': 'samajhti',
+    'अनुरोध': 'anurodh',
+    'दर्ज': 'darj',
+    'दिन': 'din',
+    'शुभ': 'shubh',
+    'अलविदा': 'alvida',
+    'सुबह': 'subah',
+    'बजे': 'baje',
+    'के': 'ke',
+    'लिए': 'liye',
+    'से': 'se',
+    'को': 'ko',
+    'पर': 'par',
+    'और': 'aur',
+    'या': 'yaa',
+    'हाँ': 'haan',
+    'जी': 'ji',
+    'कल': 'kal',
+    '11': '11',
+    '3': '3',
 }
 
+_HINDI_VOWELS = {
+    'अ': 'a', 'आ': 'aa', 'इ': 'i', 'ई': 'ee', 'उ': 'u', 'ऊ': 'oo', 'ऋ': 'ri',
+    'ए': 'e', 'ऐ': 'ai', 'ओ': 'o', 'औ': 'au', 'अं': 'an', 'अः': 'ah'
+}
+
+_HINDI_MATRAS = {
+    'ा': 'aa', 'ि': 'i', 'ी': 'ee', 'ु': 'u', 'ू': 'oo', 'ृ': 'ri',
+    'े': 'e', 'ै': 'ai', 'ो': 'o', 'ौ': 'au', 'ं': 'n', 'ः': 'h'
+}
+
+_HINDI_CONSONANTS = {
+    'क': 'k', 'ख': 'kh', 'ग': 'g', 'घ': 'gh', 'ङ': 'ng',
+    'च': 'ch', 'छ': 'chh', 'ज': 'j', 'झ': 'jh', 'ञ': 'ny',
+    'ट': 't', 'ठ': 'th', 'ड': 'd', 'ढ': 'dh', 'ण': 'n',
+    'त': 't', 'थ': 'th', 'द': 'd', 'ध': 'dh', 'न': 'n',
+    'प': 'p', 'फ': 'ph', 'ब': 'b', 'भ': 'bh', 'म': 'm',
+    'य': 'y', 'र': 'r', 'ल': 'l', 'व': 'v', 'श': 'sh',
+    'ष': 'sh', 'स': 's', 'ह': 'h', 'ळ': 'l', 'क्ष': 'ksh',
+    'ड़': 'd', 'ढ़': 'dh', 'फ़': 'f', 'ज़': 'z'
+}
+
+def _char_transliterate_hindi_word(word: str) -> str:
+    res = []
+    n = len(word)
+    i = 0
+    while i < n:
+        c = word[i]
+        if c in _HINDI_VOWELS:
+            res.append(_HINDI_VOWELS[c])
+            i += 1
+        elif c in _HINDI_CONSONANTS:
+            base = _HINDI_CONSONANTS[c]
+            if i + 1 < n and word[i + 1] in _HINDI_MATRAS:
+                res.append(base + _HINDI_MATRAS[word[i + 1]])
+                i += 2
+            elif i + 1 < n and word[i + 1] == '्':
+                res.append(base)
+                i += 2
+            else:
+                if i + 1 == n:
+                    res.append(base)
+                else:
+                    res.append(base + 'a')
+                i += 1
+        elif c in _HINDI_MATRAS:
+            res.append(_HINDI_MATRAS[c])
+            i += 1
+        elif c == '।':
+            res.append('.')
+            i += 1
+        else:
+            res.append(c)
+            i += 1
+    return ''.join(res)
+
+
 def transliterate_hindi(text: str) -> str:
-    """Detects Devanagari script and transliterates to phonetic Latin script."""
-    has_hindi = any('\u0900' <= char <= '\u097F' for char in text)
-    if not has_hindi:
+    """
+    Translates Devanagari Hindi script to natural Indian Hinglish phonetics.
+    Uses dictionary lookups for high-frequency terms + schwa-suppression parser for names.
+    """
+    if not any('\u0900' <= char <= '\u097F' for char in text):
         return text
 
-    result = []
-    for char in text:
-        result.append(_HINDI_MAP.get(char, char))
+    words = text.split()
+    res_words = []
+    for w in words:
+        clean_w = w.rstrip('.,!?।')
+        punct = w[len(clean_w):]
+        if clean_w in _HINDI_WORD_MAP:
+            res_words.append(_HINDI_WORD_MAP[clean_w] + punct)
+        else:
+            res_words.append(_char_transliterate_hindi_word(clean_w) + punct)
 
-    transliterated = "".join(result)
-    transliterated = transliterated.replace("aae", "e").replace("aai", "ai").replace("aao", "o")
-    transliterated = transliterated.replace("aaa", "aa")
-    return transliterated
+    return ' '.join(res_words)
+
+
+try:
+    import kokoro_onnx.config
+    if hasattr(kokoro_onnx.config, "SUPPORTED_LANGUAGES") and "h" not in kokoro_onnx.config.SUPPORTED_LANGUAGES:
+        kokoro_onnx.config.SUPPORTED_LANGUAGES.extend(["h", "a"])
+except Exception:
+    pass
+
+LANGUAGE_CONFIG = {
+    "en": {
+        "kokoro_lang": "a",
+        "stt_lang": "en",
+        "default_voice": settings.KOKORO_VOICE_SOPHIA_EN,
+        "female_voices": ["af_nicole", "af_bella", "af_sky"],
+        "male_voices": ["am_echo", "am_adam"],
+    },
+    "hi": {
+        "kokoro_lang": "h",
+        "stt_lang": "hi",
+        "default_voice": settings.KOKORO_VOICE_SOPHIA_HI,
+        "female_voices": [settings.KOKORO_VOICE_SOPHIA_HI, settings.KOKORO_VOICE_MAYA_HI, settings.KOKORO_VOICE_ANANYA_HI],
+        "male_voices": [settings.KOKORO_VOICE_ARJUN_HI, settings.KOKORO_VOICE_DAVID_HI],
+    },
+    "te": {
+        "kokoro_lang": "a",
+        "stt_lang": "te",
+        "default_voice": settings.KOKORO_VOICE_SOPHIA_TE,
+        "female_voices": [settings.KOKORO_VOICE_SOPHIA_TE],
+        "male_voices": [settings.KOKORO_VOICE_DAVID_TE],
+    }
+}
 
 
 class KokoroProvider(TextToSpeechProvider):
@@ -106,10 +233,12 @@ class KokoroProvider(TextToSpeechProvider):
 
         if model and model != "FAILED":
             from app.core.config import settings as _settings
-            # All production voices that could be requested in the demo
+            # All production voices that could be requested in the demo (EN + HI + TE)
             PRODUCTION_VOICES = [
                 _settings.KOKORO_VOICE_SOPHIA_EN,
+                _settings.KOKORO_VOICE_SOPHIA_HI,
                 _settings.KOKORO_VOICE_MAYA_EN,
+                _settings.KOKORO_VOICE_MAYA_HI,
                 _settings.KOKORO_VOICE_ANANYA_EN,
                 _settings.KOKORO_VOICE_ARJUN_EN,
                 _settings.KOKORO_VOICE_DAVID_EN,
@@ -135,17 +264,19 @@ class KokoroProvider(TextToSpeechProvider):
                     except Exception as ve:
                         logger.warning(f"[WARMUP] Could not cache style for '{voice_id}': {ve}")
 
-            # Run dummy synthesis using the actual default production voice (af_nicole = Sophia EN)
+            # Run dummy synthesis using default production voices
             primary_voice = cls._style_cache.get(
                 _settings.KOKORO_VOICE_SOPHIA_EN,
                 _settings.KOKORO_VOICE_SOPHIA_EN
             )
             try:
-                logger.info("[WARMUP] Running dummy Kokoro synthesis on primary production voice...")
+                logger.info("[WARMUP] Running dummy Kokoro synthesis on primary English & Hindi production voices...")
                 def _dummy_run():
-                    return model.create("Hello, warming up.", voice=primary_voice, speed=1.0, lang="en-us")
+                    model.create("Hello, warming up.", voice=primary_voice, speed=1.0, lang="en-us")
+                    model.create("नमस्ते, वार्म अप।", voice=settings.KOKORO_VOICE_SOPHIA_HI, speed=1.05, lang="h")
+                    return True
                 await asyncio.get_event_loop().run_in_executor(_kokoro_executor, _dummy_run)
-                logger.info("[WARMUP] Dummy Kokoro synthesis completed.")
+                logger.info("[WARMUP] Dummy Kokoro synthesis (EN + HI) completed successfully.")
             except Exception as e:
                 logger.warning(f"[WARMUP] Dummy Kokoro synthesis failed: {e}")
 
@@ -223,7 +354,7 @@ class KokoroProvider(TextToSpeechProvider):
 
                 logger.info(f"[Kokoro-Audit] Resolved model path:      {onnx_path} ({onnx_size_mb:.1f} MB)")
                 logger.info(f"[Kokoro-Audit] Resolved binary asset:    {bin_path} ({bin_size_mb:.1f} MB)")
-                logger.info(f"[Kokoro-Audit] Resolved JSON asset:      {json_path} ({json_size_mb:.1f} MB)")
+                logger.info(f"[Kokoro-Audit] Resolved JSON asset:      {json_size_mb:.1f} MB)")
 
                 # 2. Strict Pre-flight Validation
                 if not os.path.exists(onnx_path) or onnx_size_mb < 250:
@@ -276,6 +407,19 @@ class KokoroProvider(TextToSpeechProvider):
                 if cls._model_instance is None:
                     raise RuntimeError(f"Kokoro initialization failed: unable to load Kokoro from session with assets ({last_err})")
 
+                # Patch tokenizer language router to map 'h' -> native espeak-ng 'hi'
+                if hasattr(cls._model_instance, "tokenizer") and not getattr(cls._model_instance.tokenizer, "_patched_lang_router", False):
+                    _orig_phonemize = getattr(cls._model_instance.tokenizer, "_orig_phonemize", cls._model_instance.tokenizer.phonemize)
+                    cls._model_instance.tokenizer._orig_phonemize = _orig_phonemize
+                    def _safe_phonemize(txt, lg):
+                        if lg == "h":
+                            return _orig_phonemize(txt, "hi")
+                        elif lg in ("a", "en-us"):
+                            return _orig_phonemize(txt, "en-us")
+                        return _orig_phonemize(txt, lg)
+                    cls._model_instance.tokenizer.phonemize = _safe_phonemize
+                    cls._model_instance.tokenizer._patched_lang_router = True
+
                 active_ep = session.get_providers()[0]
                 voice_list = list(cls._model_instance.get_voices() if hasattr(cls._model_instance, "get_voices") else cls._model_instance.voices.keys())
                 logger.info(f"[Kokoro-Audit] ✓ ONNX session active on {active_ep} | Available voices ({len(voice_list)}): {voice_list[:10]}...")
@@ -294,10 +438,19 @@ class KokoroProvider(TextToSpeechProvider):
 
             return cls._model_instance
 
-    def _resolve_voice_and_lang(self, voice_config: Optional[dict], language: Optional[str]) -> tuple[str, str]:
-        """Resolves Kokoro voice preset and G2P language code from request config."""
-        lang = (language or "en").split("-")[0].lower()  # 'en', 'hi', 'te'
-        
+    def _resolve_voice_and_lang(self, voice_config: Optional[dict], language: Optional[str]) -> tuple[str, str, str]:
+        """Resolves Kokoro voice preset, target language, and kokoro_lang code from request config."""
+        lang_raw = (language or "en").split("-")[0].lower().strip()
+        if lang_raw in ("hindi", "hi"):
+            lang_key = "hi"
+        elif lang_raw in ("telugu", "te"):
+            lang_key = "te"
+        else:
+            lang_key = "en"
+
+        cfg = LANGUAGE_CONFIG.get(lang_key, LANGUAGE_CONFIG["en"])
+        kokoro_lang = cfg["kokoro_lang"]
+
         # Resolve persona name
         persona = "sophia"
         if voice_config:
@@ -306,7 +459,7 @@ class KokoroProvider(TextToSpeechProvider):
                 voice_config.get("voice_name") or 
                 voice_config.get("name") or "sophia"
             ).lower().strip()
-            
+
         # Determine voice preset mapping
         voice_map = {
             ("sophia", "en"): settings.KOKORO_VOICE_SOPHIA_EN,
@@ -325,13 +478,22 @@ class KokoroProvider(TextToSpeechProvider):
             ("david", "hi"): settings.KOKORO_VOICE_DAVID_HI,
             ("david", "te"): settings.KOKORO_VOICE_DAVID_TE,
         }
-        
-        voice = voice_map.get((persona, lang), settings.KOKORO_VOICE_SOPHIA_EN)
-        
-        # Determine language code for phonemization — must be supported by kokoro-onnx config
-        lang_code = "en-us"  
-            
-        return voice, lang_code
+
+        voice = voice_map.get((persona, lang_key), cfg["default_voice"])
+
+        # STRICT LANGUAGE GUARD (Section 14 / Requirement 1)
+        if lang_key == "hi":
+            hindi_voices = {
+                settings.KOKORO_VOICE_SOPHIA_HI,
+                settings.KOKORO_VOICE_MAYA_HI,
+                settings.KOKORO_VOICE_ANANYA_HI,
+                settings.KOKORO_VOICE_ARJUN_HI,
+                settings.KOKORO_VOICE_DAVID_HI,
+            }
+            assert voice in hindi_voices, f"[CRITICAL GUARD] Hindi session must use an Indian Hindi voice preset! Got {voice}"
+            assert kokoro_lang == "h", f"[CRITICAL GUARD] Hindi session must use kokoro_lang='h'! Got {kokoro_lang}"
+
+        return voice, kokoro_lang, lang_key
 
     async def stream_speech(
         self,
@@ -342,14 +504,17 @@ class KokoroProvider(TextToSpeechProvider):
     ) -> AsyncGenerator[bytes, None]:
         import time
         t_start = time.perf_counter()
+        voice, kokoro_lang, lang_key = self._resolve_voice_and_lang(voice_config, language)
 
-        # Handle Telugu script phonetic transliteration
-        processed_text = transliterate_telugu(text)
-        # Handle Hindi script phonetic transliteration
-        processed_text = transliterate_hindi(processed_text)
-        
-        # Strip any remaining non-ASCII characters to prevent espeak language-switch hangs
-        processed_text = "".join(c for c in processed_text if ord(c) < 128)
+        # For Hindi, apply dedicated TTS text normalization (numbers, English entities, Devanagari names)
+        if lang_key == "hi":
+            from app.services.hinglish_normalizer import prepare_text_for_hindi_tts
+            processed_text = prepare_text_for_hindi_tts(text)
+        elif lang_key == "te":
+            processed_text = transliterate_telugu(text)
+            processed_text = "".join(c for c in processed_text if ord(c) < 128)
+        else:
+            processed_text = text.strip()
 
         # Skip file I/O check if already verified at warmup or previous call
         if not self.__class__._files_verified:
@@ -360,7 +525,18 @@ class KokoroProvider(TextToSpeechProvider):
         if model == "FAILED" or model is None:
             raise RuntimeError("Local Kokoro TTS loading failed.")
 
-        voice, lang_code = self._resolve_voice_and_lang(voice_config, language)
+        # Ensure model tokenizer maps 'h' to native espeak-ng 'hi' phonemizer backend
+        if hasattr(model, "tokenizer") and not getattr(model.tokenizer, "_patched_lang_router", False):
+            _orig_phonemize = getattr(model.tokenizer, "_orig_phonemize", model.tokenizer.phonemize)
+            model.tokenizer._orig_phonemize = _orig_phonemize
+            def _safe_phonemize(txt, lg):
+                if lg == "h":
+                    return _orig_phonemize(txt, "hi")  # Native Indian Hindi IPA G2P
+                elif lg == "a":
+                    return _orig_phonemize(txt, "en-us")
+                return _orig_phonemize(txt, lg)
+            model.tokenizer.phonemize = _safe_phonemize
+            model.tokenizer._patched_lang_router = True
 
         # Validate voice exists in Kokoro voices catalog to prevent runtime errors
         if hasattr(model, "voices") and isinstance(model.voices, dict):
@@ -387,21 +563,35 @@ class KokoroProvider(TextToSpeechProvider):
             except ValueError:
                 pass
 
-        logger.info(f"[TTS-START] Kokoro synthesizing: voice='{voice}' lang='{lang_code}' speed={speed} chars={len(processed_text)}")
+        # REQUIREMENT 1 TELEMETRY: [TTS-CONFIG]
+        logger.info(f"[TTS-CONFIG] language={lang_key} kokoro_lang={kokoro_lang} voice={voice} text_chars={len(processed_text)}")
+        logger.info(f"[TTS-START] Kokoro synthesizing: voice='{voice}' lang='{kokoro_lang}' speed={speed} chars={len(processed_text)}")
 
         try:
             loop = asyncio.get_event_loop()
 
-            # Pass the cached numpy style array directly to create() to bypass lookup
+            t_prep = time.perf_counter()
+            phonemization_ms = (t_prep - t_start) * 1000.0
+
             def _synthesize_sync():
-                return model.create(
+                t_inf_start = time.perf_counter()
+                res = model.create(
                     processed_text,
                     voice=voice_style,
                     speed=speed,
-                    lang=lang_code
+                    lang=kokoro_lang
                 )
+                inf_ms = (time.perf_counter() - t_inf_start) * 1000.0
+                return res, inf_ms
 
-            samples, sample_rate = await loop.run_in_executor(_kokoro_executor, _synthesize_sync)
+            (samples, sample_rate), inf_ms = await loop.run_in_executor(_kokoro_executor, _synthesize_sync)
+            ttfb_ms = (time.perf_counter() - t_start) * 1000.0
+
+            # REQUIREMENT 2 TELEMETRY: [TTS-PERF]
+            logger.info(
+                f"[TTS-PERF] pipeline_init_ms=0.0ms | phonemization_ms={phonemization_ms:.1f}ms | "
+                f"inference_ms={inf_ms:.1f}ms | ttfb_ms={ttfb_ms:.1f}ms | total_ms={ttfb_ms:.1f}ms"
+            )
 
             if cancel_event and cancel_event.is_set():
                 logger.info("[TTS] Stream cancelled after synthesis.")

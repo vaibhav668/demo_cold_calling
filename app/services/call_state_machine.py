@@ -45,6 +45,7 @@ _VALID_TRANSITIONS: dict[CallState, set[CallState]] = {
     },
     CallState.THINKING: {
         CallState.GENERATING_RESPONSE,
+        CallState.AI_SPEAKING,
         CallState.THINKING,
         CallState.WAITING_FOR_CUSTOMER,
         CallState.ERROR,

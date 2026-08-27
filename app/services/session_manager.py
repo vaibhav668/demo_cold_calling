@@ -24,6 +24,9 @@ class SessionManager:
     async def get_message_history(self, call_id: str) -> List[Dict[str, str]]:
         return _in_memory_messages.get(call_id, [])
 
+    async def clear_message_history(self, call_id: str) -> None:
+        _in_memory_messages.pop(call_id, None)
+
     async def append_message(self, call_id: str, message: Dict[str, str]) -> None:
         if call_id not in _in_memory_messages:
             _in_memory_messages[call_id] = []
@@ -41,3 +44,22 @@ class SessionManager:
         except ImportError:
             pass
         logger.info(f"[SessionManager] Purged local session cache for {call_id} and ran garbage collection.")
+
+
+class VoiceSession:
+    def __init__(self, session_id: str):
+        self.session_id = session_id
+
+    @property
+    def customer_name(self) -> Optional[str]:
+        meta = _in_memory_metadata.get(self.session_id)
+        if meta:
+            return meta.get("customer_name")
+        return None
+
+    @customer_name.setter
+    def customer_name(self, val: Optional[str]) -> None:
+        if self.session_id not in _in_memory_metadata:
+            _in_memory_metadata[self.session_id] = {}
+        _in_memory_metadata[self.session_id]["customer_name"] = val
+

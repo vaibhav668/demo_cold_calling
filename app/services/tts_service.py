@@ -1,279 +1,320 @@
+import os
+import io
 import time
-import inspect
 import asyncio
-import re
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, Dict, Any, List
+from app.core.logging import logger
 from app.core.config import settings
 from app.services.speech.tts.base import TextToSpeechProvider
+from app.services.speech.tts.svara_provider import SvaraProvider
 from app.services.speech.tts.kokoro_provider import KokoroProvider
-from app.services.speech.tts.edge_tts_provider import EdgeTTSProvider
-from app.core.logging import logger
 
-_voice_service_instance = None
+
+def get_voice_provider() -> TextToSpeechProvider:
+    """Factory function to retrieve the configured TextToSpeechProvider implementation."""
+    provider_name = getattr(settings, "TTS_PROVIDER", "svara").lower().strip()
+    if provider_name == "svara":
+        return SvaraProvider()
+    elif provider_name == "kokoro":
+        return KokoroProvider()
+    else:
+        logger.warning(f"Unknown TTS provider '{provider_name}'. Falling back to SvaraProvider.")
+        return SvaraProvider()
+
 
 def get_voice_service() -> "VoiceService":
-    global _voice_service_instance
-    if _voice_service_instance is None:
-        _voice_service_instance = VoiceService()
-    return _voice_service_instance
+    """Factory function to retrieve the configured VoiceService facade wrapping the TTS provider."""
+    return VoiceService(get_voice_provider())
 
 
-def sanitize_for_tts(text: str) -> str:
+def find_safe_sentence_boundary(
+    text: str,
+    min_chars: int = 8,
+    target_chars: int = 50,
+    max_chars: int = 140
+) -> int:
     """
-    Strips all implementation leaks, internal tokens, XML, JSON, tool call syntax,
-    and markdown formatting, leaving only clean conversational text.
+    Finds the optimal character boundary index to split streaming text into coherent speech sentences.
+    Respects common titles (Dr., Mr., Mrs.) and numbers to avoid premature sentence splitting.
     """
+    if len(text) < min_chars:
+        return -1
+
+    search_window = text[:max_chars]
+    
+    # Check for sentence terminators (. ! ? ।)
+    terminators = [".", "!", "?", "।"]
+    for i in range(len(search_window) - 1, -1, -1):
+        char = search_window[i]
+        if char in terminators:
+            # Prevent splitting on titles like Dr., Mr., Mrs.
+            prefix = search_window[:i].lower()
+            if prefix.endswith(("dr", "mr", "mrs", "ms", "prof", "st", "vs")):
+                continue
+            # Prevent splitting on numbers (e.g. 11.30 AM)
+            if i > 0 and i < len(search_window) - 1 and search_window[i-1].isdigit() and search_window[i+1].isdigit():
+                continue
+            if i >= min_chars:
+                return i
+
+    # Fallback to clause boundaries (commas, colons, semicolons) if target length reached
+    if len(text) >= target_chars:
+        for i in range(min(len(text), max_chars) - 1, min_chars, -1):
+            if text[i] in (",", ";", ":", "-", "—"):
+                return i
+
+    # Force split at nearest space if buffer exceeds max_chars
+    if len(text) >= max_chars:
+        space_idx = text.rfind(" ", min_chars, max_chars)
+        if space_idx != -1:
+            return space_idx
+        return max_chars - 1
+
+    return -1
+
+
+def sanitize_for_tts(text: str, persona: Optional[str] = None) -> str:
+    """Sanitizes text output and enforces persona identity before handing to TTS engine."""
+    import re
     if not text:
         return ""
-        
-    # 1. Strip markdown code blocks (e.g. ```json ... ```)
-    text = re.sub(r'```[\s\S]*?```', '', text)
-    
-    # 2. Strip JSON-like structures (any braces {...} containing colons, quotes, etc.)
-    text = re.sub(r'\{[^{}]*?["\']\s*:\s*[^{}]*?\}', '', text)
-    # Also strip general curly braces content if it looks like JSON
-    text = re.sub(r'\{[^{}]*?\}', '', text)
-    
-    # 3. Strip HTML / XML tags (e.g., </function>, <tool_call>, etc.)
-    text = re.sub(r'<[^>]+>', '', text)
-    
-    # 4. Strip tool execution and state tags (e.g. [STATE: ...], [EXTRACT: ...])
-    text = re.sub(r'\[STATE:[^\]]*\]', '', text)
-    text = re.sub(r'\[EXTRACT:[^\]]*\]', '', text)
-    text = re.sub(r'\[RECOVERY_SAY:[^\]]*\]', '', text)
-    
-    # 5. Remove common tool names / system leakage keywords
-    system_patterns = [
-        r'(?i)\btransfer_to_human\b',
-        r'(?i)\bend_call\b',
-        r'(?i)\btool_call\b',
-        r'(?i)\bfunction_call\b',
-    ]
-    for pattern in system_patterns:
-        text = re.sub(pattern, '', text)
-        
-    # 6. Clean markdown symbols
-    text = text.replace("**", "").replace("*", "").replace("`", "")
+    # Strict TTS input validation: reject metadata blocks (Part 16)
+    if "[" in text or "]" in text or "{" in text or "}" in text or "customer_name=" in text or "intent=" in text:
+        logger.error(f"[TTS-SAFETY-SANITIZER-REJECT] Metadata leak detected in TTS text: '{text}'")
+        raise ValueError(f"Metadata leak detected in TTS text: {text}")
+
+    text = text.replace("**", "").replace("*", "")
     text = re.sub(r'#+\s+', '', text)
+    text = text.replace("`", "")
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'\[[^\]]+\]', '', text)
     
-    # 7. Clean up extra whitespace and residual punctuation
-    text = re.sub(r'\s+', ' ', text)
+    if persona:
+        persona_title = persona.title()
+        other_personas = [p for p in ["Sophia", "Maya", "Ananya", "Arjun", "David"] if p.lower() != persona.lower()]
+        for other in other_personas:
+            if other in text and persona_title not in text:
+                logger.warning(f"[PERSONA-PIPELINE-SANATIZE] Replacing '{other}' with requested persona '{persona_title}' BEFORE TTS")
+                text = text.replace(other, persona_title)
+
     return text.strip()
 
 
 class VoiceService:
     """
-    Service Facade representing the Text-to-Speech (TTS) interface.
-    Conversation Engine and Telephony systems use this facade to synthesize audio.
+    High-level facade for text-to-speech synthesis and progressive streaming.
+    Instantiates configured provider singleton and manages progressive sentence chunking.
     """
+
+    def __init__(self, provider: Optional[TextToSpeechProvider] = None) -> None:
+        self.provider = provider or get_voice_provider()
 
     @classmethod
     async def warmup(cls) -> float:
-        """Warms up the voice service by preloading Kokoro model if active."""
-        instance = get_voice_service()
-        if isinstance(instance.provider, KokoroProvider):
-            return await KokoroProvider.warmup()
+        """Warms up the underlying TTS provider model."""
+        provider = get_voice_provider()
+        if hasattr(provider, "warmup"):
+            return await provider.warmup()
         return 0.0
-
-    def __init__(self) -> None:
-        provider_name = settings.TTS_PROVIDER.lower().strip()
-        logger.info(f"[TTS-INIT] Selecting TTS provider: '{provider_name}'")
-        
-        self.provider = None
-        if provider_name == "kokoro":
-            try:
-                self.provider = KokoroProvider()
-            except Exception as e:
-                logger.error(f"[TTS-INIT] Kokoro initialization failed, falling back to EdgeTTS: {e}")
-                self.provider = EdgeTTSProvider()
-        else:
-            self.provider = EdgeTTSProvider()
 
     async def stream_speech(
         self,
         text: str,
         cancel_event: Optional[asyncio.Event] = None,
         language: Optional[str] = None,
-        voice_config: Optional[dict] = None,
+        voice_config: Optional[dict] = None
     ) -> AsyncGenerator[bytes, None]:
-        """Delegate synthesis streaming to the configured provider (Kokoro or EdgeTTS)."""
+        """Direct pass-through streaming to the underlying TTS provider."""
         async for chunk in self.provider.stream_speech(
-            text, cancel_event=cancel_event, language=language, voice_config=voice_config
+            text,
+            cancel_event=cancel_event,
+            language=language,
+            voice_config=voice_config
         ):
             yield chunk
 
     async def stream_text_stream_progressive(
         self,
-        text_stream: AsyncGenerator[str, None],
+        text_generator: AsyncGenerator[str, None],
         cancel_event: Optional[asyncio.Event] = None,
         language: Optional[str] = None,
-        voice_config: Optional[dict] = None,
-        is_greeting: bool = False
+        voice_config: Optional[dict] = None
     ) -> AsyncGenerator[bytes, None]:
         """
-        Consumes an incoming LLM token stream, splits into sentences progressively,
-        and synthesizes audio chunks using a true producer-consumer model where
-        synthesis of sentence i overlaps with the playout of sentence i-1.
+        Progressive LLM Token -> Sentence Splitter -> Sequenced Parallel Synthesis -> Ordered Playout.
+        Guarantees strict sentence playback sequence (1 -> 2 -> 3 -> 4) while pre-synthesizing upcoming sentences.
         """
-        # Natural segmenter limits
-        MIN_CHARS = 25
-        MAX_CHARS = 50
-        punctuation = {'.', '?', '!', '\n'}
-        secondary_punctuation = {',', ';', ':', '—', '-'}
-        abbreviations = ("dr.", "mr.", "mrs.", "ms.", "vs.", "st.", "co.", "inc.", "ltd.", "e.g.", "i.e.")
+        sentence_index = 0
+        
+        # Sequenced Playout Buffer: stores chunks per sentence sequence index
+        # sentence_chunks[seq_id] = list of audio bytes
+        # sentence_done[seq_id] = bool
+        sentence_events: Dict[int, asyncio.Event] = {}
+        sentence_chunks: Dict[int, List[bytes]] = {}
+        sentence_done: Dict[int, bool] = {}
+        
+        producer_done = asyncio.Event()
 
-        sentence_queues = asyncio.Queue()
-        active_tasks = set()
+        # Telemetry trackers per sentence ID
+        synth_start_times: Dict[int, float] = {}
+        synth_end_times: Dict[int, float] = {}
+        play_start_times: Dict[int, float] = {}
+        play_end_times: Dict[int, float] = {}
 
-        async def _synthesize_sentence_task(sentence: str, queue: asyncio.Queue):
-            try:
-                t_synth_start = time.perf_counter()
-                async for chunk in self.stream_speech(
-                    sentence,
-                    cancel_event=cancel_event,
-                    language=language,
-                    voice_config=voice_config
-                ):
-                    if cancel_event and cancel_event.is_set():
-                        break
-                    await queue.put(chunk)
-                t_synth_end = time.perf_counter()
-                logger.info(f"[TTS-OVERLAP] Synthesized sentence in {(t_synth_end - t_synth_start)*1000:.0f}ms: '{sentence}'")
-            except Exception as e:
-                logger.error(f"[TTS-OVERLAP] Synthesis failed for sentence '{sentence}': {e}")
-            finally:
-                await queue.put(None)
-
+        # 1. Text extractor producer: extracts sentence boundaries from LLM token stream
         async def producer():
+            nonlocal sentence_index
+            buffer = ""
+            persona_name = (voice_config or {}).get("persona_name", "Sophia")
             try:
-                buffer = ""
-                turn_start = time.perf_counter()
-                sentence_index = 0
-
-                async for chunk in text_stream:
+                async for chunk in text_generator:
                     if cancel_event and cancel_event.is_set():
                         break
                     buffer += chunk
 
                     while True:
-                        positions = sorted(
-                            idx
-                            for p in punctuation
-                            for idx in _find_all(buffer, p)
-                        )
-                        found_idx = -1
-                        if positions:
-                            for pos in positions:
-                                seg = buffer[:pos + 1]
-                                if '\n' in buffer[pos]:
-                                    found_idx = pos
-                                    break
-                                if len(seg.strip()) >= MIN_CHARS:
-                                    low_seg = seg.strip().lower()
-                                    if not any(low_seg.endswith(abbr) for abbr in abbreviations):
-                                        found_idx = pos
-                                        break
-
-                        # If no primary punctuation matches, but buffer exceeds MAX_CHARS,
-                        # try to split at a secondary punctuation (like comma) or a space to keep chunk size <= 50
-                        if found_idx == -1 and len(buffer.strip()) >= MAX_CHARS:
-                            sec_positions = sorted(
-                                idx
-                                for p in secondary_punctuation
-                                for idx in _find_all(buffer, p)
-                            )
-                            for pos in sec_positions:
-                                if len(buffer[:pos + 1].strip()) >= MIN_CHARS:
-                                    found_idx = pos
-                                    break
-
-                            if found_idx == -1:
-                                space_positions = list(_find_all(buffer, ' '))
-                                for pos in reversed(space_positions):
-                                    if MIN_CHARS <= pos <= MAX_CHARS:
-                                        found_idx = pos
-                                        break
-
-                        if found_idx == -1:
+                        boundary = find_safe_sentence_boundary(buffer, min_chars=8, target_chars=50, max_chars=140)
+                        if boundary == -1:
                             break
 
-                        sentence = buffer[:found_idx + 1].strip()
-                        buffer = buffer[found_idx + 1:]
+                        sentence = sanitize_for_tts(buffer[:boundary + 1], persona=persona_name)
+                        buffer = buffer[boundary + 1:]
 
                         if sentence:
                             sentence_index += 1
-                            logger.info(
-                                f"[TTS-SENTENCE #{sentence_index}] Extracted: '{sentence}' "
-                                f"| turn_elapsed={(time.perf_counter() - turn_start)*1000:.0f}ms"
-                            )
-                            sentence_queue = asyncio.Queue()
-                            await sentence_queues.put((sentence, sentence_queue))
-                            
-                            synth_task = asyncio.create_task(
-                                _synthesize_sentence_task(sentence, sentence_queue)
-                            )
-                            active_tasks.add(synth_task)
-                            synth_task.add_done_callback(active_tasks.discard)
+                            seq_id = sentence_index
+                            sentence_events[seq_id] = asyncio.Event()
+                            sentence_chunks[seq_id] = []
+                            sentence_done[seq_id] = False
+                            logger.info(f"[TTS-QUEUE] sentence={seq_id} text_chars={len(sentence)} text='{sentence}'")
+                            asyncio.create_task(_synth_sentence(seq_id, sentence))
 
-                # Process leftover buffer
-                remaining = buffer.strip()
+                remaining = sanitize_for_tts(buffer, persona=persona_name)
                 if remaining and (not cancel_event or not cancel_event.is_set()):
                     sentence_index += 1
-                    logger.info(
-                        f"[TTS-SENTENCE #{sentence_index} FINAL] Extracted: '{remaining}' "
-                        f"| turn_elapsed={(time.perf_counter() - turn_start)*1000:.0f}ms"
-                    )
-                    sentence_queue = asyncio.Queue()
-                    await sentence_queues.put((remaining, sentence_queue))
-                    
-                    synth_task = asyncio.create_task(
-                        _synthesize_sentence_task(remaining, sentence_queue)
-                    )
-                    active_tasks.add(synth_task)
-                    synth_task.add_done_callback(active_tasks.discard)
+                    seq_id = sentence_index
+                    sentence_events[seq_id] = asyncio.Event()
+                    sentence_chunks[seq_id] = []
+                    sentence_done[seq_id] = False
+                    logger.info(f"[TTS-QUEUE] sentence={seq_id} (FINAL) text_chars={len(remaining)} text='{remaining}'")
+                    asyncio.create_task(_synth_sentence(seq_id, remaining))
 
             except Exception as e:
-                logger.error(f"[TTS-OVERLAP] Producer task failed: {e}")
+                logger.error(f"[TTS-PRODUCER] Text extractor producer failed: {e}")
             finally:
-                await sentence_queues.put(None)
+                producer_done.set()
 
-        # Start the producer task
+        prefetch_sem = asyncio.Semaphore(4)
+
+        # 2. Worker task: synthesizes speech for a given sentence sequence ID
+        async def _synth_sentence(seq_id: int, sentence: str):
+            async with prefetch_sem:
+                voice_name = (voice_config or {}).get("persona_name", "Sophia")
+                lang_code = language or "en"
+                logger.info(f"[TTS-SYNTH-START] sentence={seq_id} voice='{voice_name}' lang='{lang_code}' text='{sentence}'")
+                t_synth_start = time.perf_counter()
+                synth_start_times[seq_id] = t_synth_start
+                chunk_count = 0
+                try:
+                    async for audio_chunk in self.stream_speech(
+                        sentence,
+                        cancel_event=cancel_event,
+                        language=language,
+                        voice_config=voice_config
+                    ):
+                        if cancel_event and cancel_event.is_set():
+                            break
+                        chunk_count += 1
+                        sentence_chunks[seq_id].append(audio_chunk)
+                        sentence_events[seq_id].set()
+
+                    inf_ms = (time.perf_counter() - t_synth_start) * 1000.0
+                    synth_end_times[seq_id] = time.perf_counter()
+                    logger.info(f"[TTS-SYNTH-END] sentence={seq_id} inference_ms={inf_ms:.1f}ms chunks={chunk_count}")
+                except Exception as e:
+                    logger.error(f"[TTS-WORKER] Synthesis failed for sentence #{seq_id}: {e}")
+                finally:
+                    sentence_done[seq_id] = True
+                    sentence_events[seq_id].set()
+
+        # Start producer task
         producer_task = asyncio.create_task(producer())
+
+        # 3. Sequenced Playout Consumer: yields audio chunks strictly in sentence order 1 -> 2 -> 3
+        next_seq_to_play = 1
+        previous_chunk_end_t = 0.0
 
         try:
             while True:
                 if cancel_event and cancel_event.is_set():
                     break
 
-                queue_item = await sentence_queues.get()
-                if queue_item is None:
+                # Check if producer is done and all sequence items played out
+                if producer_done.is_set() and next_seq_to_play > sentence_index:
                     break
 
-                sentence, sentence_queue = queue_item
-                logger.info(f"[TTS-OVERLAP] Playout started for sentence: '{sentence}'")
+                # Wait for the next sequence ID to be registered
+                if next_seq_to_play not in sentence_events:
+                    if producer_done.is_set() and next_seq_to_play > sentence_index:
+                        break
+                    await asyncio.sleep(0.005)
+                    continue
+
+                # Wait until sentence_1 has at least 1 audio chunk synthesized
+                await sentence_events[next_seq_to_play].wait()
+
+                seq_id = next_seq_to_play
+                play_start_t = time.perf_counter()
+                play_start_times[seq_id] = play_start_t
+                sentence_audio_bytes = 0
+                chunk_ptr = 0
+                logger.info(f"[TTS-PLAY-START] sentence={seq_id}")
 
                 while True:
                     if cancel_event and cancel_event.is_set():
                         break
-                    chunk = await sentence_queue.get()
-                    if chunk is None:
+
+                    chunks = sentence_chunks.get(seq_id, [])
+                    while chunk_ptr < len(chunks):
+                        c = chunks[chunk_ptr]
+                        chunk_ptr += 1
+                        sentence_audio_bytes += len(c)
+                        yield c
+
+                    if sentence_done.get(seq_id, False) and chunk_ptr >= len(sentence_chunks.get(seq_id, [])):
                         break
-                    yield chunk
-                logger.info(f"[TTS-OVERLAP] Playout completed for sentence: '{sentence}'")
+
+                    # Wait for next chunk of current sentence
+                    await asyncio.sleep(0.002)
+
+                play_end_t = time.perf_counter()
+                play_end_times[seq_id] = play_end_t
+                play_dur_ms = (play_end_t - play_start_t) * 1000.0
+                audio_duration_ms = sentence_audio_bytes / 48.0
+                
+                # Calculate playback gap telemetry metrics (Requirement 24)
+                gen_start = synth_start_times.get(seq_id, play_start_t)
+                gen_end = synth_end_times.get(seq_id, play_start_t)
+                synthesis_wait_ms = (gen_end - gen_start) * 1000.0
+                queue_wait_ms = (play_start_t - gen_end) * 1000.0 if gen_end > 0 else 0.0
+                playback_gap_ms = (play_start_t - previous_chunk_end_t) * 1000.0 if previous_chunk_end_t > 0.0 else 0.0
+                previous_chunk_end_t = play_end_t
+
+                # [TTS-FLOW] Mandatory Telemetry Logging (Requirement 24)
+                logger.info(
+                    f"[TTS-FLOW] sentence_id={seq_id} generation_start={gen_start:.3f} generation_end={gen_end:.3f} "
+                    f"playback_start={play_start_t:.3f} playback_end={play_end_t:.3f} audio_duration={audio_duration_ms:.1f}ms "
+                    f"queue_wait_ms={queue_wait_ms:.1f}ms synthesis_wait_ms={synthesis_wait_ms:.1f}ms "
+                    f"playback_gap_ms={playback_gap_ms:.1f}ms previous_chunk_end={previous_chunk_end_t:.3f} "
+                    f"current_chunk_start={play_start_t:.3f} gap_ms={playback_gap_ms:.1f}ms"
+                )
+
+                if playback_gap_ms > 100.0:
+                    logger.error(f"[TTS-FLOW-GAP-ERROR] Excessive inter-sentence gap! gap_ms={playback_gap_ms:.1f}ms (>100ms threshold)")
+                elif playback_gap_ms > 30.0:
+                    logger.warning(f"[TTS-FLOW-GAP-WARN] Noticeable inter-sentence gap! gap_ms={playback_gap_ms:.1f}ms (>30ms threshold)")
+
+                next_seq_to_play += 1
 
         finally:
-            # Clean up all background tasks
             producer_task.cancel()
-            for task in list(active_tasks):
-                task.cancel()
-
-
-def _find_all(s: str, char: str):
-    """Yield all indices where char appears in s."""
-    idx = 0
-    while True:
-        idx = s.find(char, idx)
-        if idx == -1:
-            break
-        yield idx
-        idx += 1

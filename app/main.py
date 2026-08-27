@@ -100,17 +100,23 @@ async def lifespan(app: FastAPI):
                 if count == 0:
                     logger.info("[Startup] voice_profiles table empty — seeding default voices...")
                     _profiles = [
-                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440001"), name="Sophia",  description="Professional Female",    gender="Female", supported_languages="English,Hindi",         voice_provider="melotts", voice_configuration=_json.dumps({"speaker_id": "EN_INDIA", "speed": 0.95}), status="active"),
-                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440002"), name="Maya",    description="Friendly Female",          gender="Female", supported_languages="English,Telugu",        voice_provider="melotts", voice_configuration=_json.dumps({"speaker_id": "EN_INDIA", "speed": 1.0}),  status="active"),
-                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440003"), name="Ananya",  description="Customer Support",         gender="Female", supported_languages="English,Hindi,Telugu",  voice_provider="melotts", voice_configuration=_json.dumps({"speaker_id": "EN_INDIA", "speed": 1.05}), status="active"),
-                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440004"), name="Arjun",   description="Sales Specialist",         gender="Male",   supported_languages="English,Hindi",         voice_provider="melotts", voice_configuration=_json.dumps({"speaker_id": "EN_INDIA", "speed": 1.0}),  status="active"),
-                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440005"), name="David",   description="Enterprise Consultant",    gender="Male",   supported_languages="English",               voice_provider="melotts", voice_configuration=_json.dumps({"speaker_id": "EN_US",    "speed": 0.98}), status="active"),
+                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440001"), name="Sophia",  description="Professional Female",    gender="Female", supported_languages="English,Hindi,Telugu", voice_provider="svara", voice_configuration=_json.dumps({"persona_name": "Sophia", "speed": 1.0}), status="active"),
+                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440002"), name="Maya",    description="Friendly Female",          gender="Female", supported_languages="English,Hindi,Telugu", voice_provider="svara", voice_configuration=_json.dumps({"persona_name": "Maya", "speed": 1.0}),   status="active"),
+                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440003"), name="Ananya",  description="Customer Support",         gender="Female", supported_languages="English,Hindi,Telugu", voice_provider="svara", voice_configuration=_json.dumps({"persona_name": "Ananya", "speed": 1.0}), status="active"),
+                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440004"), name="Arjun",   description="Sales Specialist",         gender="Male",   supported_languages="English,Hindi,Telugu", voice_provider="svara", voice_configuration=_json.dumps({"persona_name": "Arjun", "speed": 1.0}),  status="active"),
+                        VoiceProfile(id=_uuid.UUID("550e8400-e29b-41d4-a716-446655440005"), name="David",   description="Enterprise Consultant",    gender="Male",   supported_languages="English,Hindi,Telugu", voice_provider="svara", voice_configuration=_json.dumps({"persona_name": "David", "speed": 1.0}),  status="active"),
                     ]
                     _seed_db.add_all(_profiles)
                     await _seed_db.commit()
                     logger.info("[Startup] Voice profiles seeded successfully.")
                 else:
-                    logger.info(f"[Startup] voice_profiles has {count} profiles — skip seed.")
+                    # Update existing profiles to support all 3 languages
+                    from sqlalchemy import update
+                    await _seed_db.execute(
+                         update(VoiceProfile).values(supported_languages="English,Hindi,Telugu", voice_provider="svara")
+                    )
+                    await _seed_db.commit()
+                    logger.info(f"[Startup] voice_profiles has {count} profiles — updated all supported_languages to English,Hindi,Telugu.")
         except Exception as e:
             logger.error(f"[Startup] Voice profile auto-seed failed (non-fatal): {e}")
 
@@ -135,10 +141,9 @@ async def lifespan(app: FastAPI):
         stt_ms = await SpeechService.warmup()
         STARTUP_METRICS["stt_load_ms"] = round(stt_ms, 1)
 
-        # 3. Warm up TTS Provider (including pre-caching all production voice styles)
+        # 3. Warm up TTS Provider (Svara)
         t_t0 = time.perf_counter()
         from app.services.tts_service import VoiceService, get_voice_service
-        from app.services.speech.tts.kokoro_provider import KokoroProvider
         await VoiceService.warmup()
         STARTUP_METRICS["tts_load_ms"] = round((time.perf_counter() - t_t0) * 1000.0, 1)
 
@@ -160,27 +165,35 @@ async def lifespan(app: FastAPI):
             f"TTS={STARTUP_METRICS['tts_load_ms']}ms | LLM={STARTUP_METRICS['llm_warmup_ms']}ms"
         )
 
-        # 5. Pre-generate greetings for all default voice + industry combinations
-        #    These are stored in the process-level _greeting_cache in voice_agent.py
-        #    so every first session gets instant audio from cache instead of cold-generating
+        # 5. Pre-generate greetings for default voice + industry combinations
         try:
             from app.voice_demo.controllers.voice_agent import (
                 pregenerate_greeting, _greeting_cache
             )
-            DEFAULT_VOICES = ["Sophia", "Maya", "Ananya", "Arjun", "David"]
+            DEFAULT_VOICES = [
+                ("Sophia", "Female"),
+                ("Maya", "Female"),
+                ("Ananya", "Female"),
+                ("Arjun", "Male"),
+                ("David", "Male")
+            ]
             DEFAULT_INDUSTRIES = ["hospital", "real_estate"]
+            DEFAULT_LANGUAGES = ["English", "Hindi", "Telugu"]
             pregen_session_id = "__warmup__"
 
             async def _prewarm_greetings():
-                for voice_name in DEFAULT_VOICES:
+                for voice_name, gender in DEFAULT_VOICES:
                     for industry in DEFAULT_INDUSTRIES:
-                        cache_key = (voice_name.lower(), "English", industry)
-                        if cache_key not in _greeting_cache:
-                            try:
-                                await pregenerate_greeting(pregen_session_id, industry, "English", voice_name)
-                                logger.info(f"[WARMUP-PREGEN] Pre-generated greeting: voice={voice_name} industry={industry}")
-                            except Exception as pregen_err:
-                                logger.warning(f"[WARMUP-PREGEN] Non-fatal: {voice_name}/{industry}: {pregen_err}")
+                        for lang in DEFAULT_LANGUAGES:
+                            lang_code = {"English": "en", "Hindi": "hi", "Telugu": "te"}.get(lang, "en")
+                            cache_key = (voice_name.lower().strip(), lang_code.lower().strip(), industry.lower().strip())
+                            if cache_key not in _greeting_cache:
+                                try:
+                                    success = await pregenerate_greeting(pregen_session_id, industry, lang, voice_name, gender=gender)
+                                    if not success:
+                                        logger.error(f"[WARMUP-PREGEN] Greeting pre-generation failed (returned False) for voice={voice_name} lang={lang} industry={industry}")
+                                except Exception as pregen_err:
+                                    logger.error(f"[WARMUP-PREGEN] Greeting pre-generation failed with exception for voice={voice_name}/{lang}/{industry}: {pregen_err}", exc_info=True)
 
             asyncio.create_task(_prewarm_greetings())
             logger.info("[WARMUP-PREGEN] Launched background greeting pre-generation for all voice+industry combos")

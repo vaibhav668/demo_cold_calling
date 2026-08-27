@@ -75,7 +75,76 @@ document.addEventListener("DOMContentLoaded", () => {
     setupListeners();
     loadVoices();
     updateScenarioText();
+    initWaveCanvas();
 });
+
+// ─── Orb Canvas Wave Animation ──────────────────────────────────────────────
+let waveCanvas = null;
+let waveCtx = null;
+let waveAnimFrame = null;
+let currentOrbState = CallState.CALL_COMPLETED;
+
+function initWaveCanvas() {
+    waveCanvas = document.getElementById("orb-wave-canvas");
+    if (!waveCanvas) return;
+    waveCtx = waveCanvas.getContext("2d");
+    resizeWaveCanvas();
+    window.addEventListener("resize", resizeWaveCanvas);
+    startWaveAnimation();
+}
+
+function resizeWaveCanvas() {
+    if (!waveCanvas) return;
+    const rect = waveCanvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    waveCanvas.width = rect.width * dpr;
+    waveCanvas.height = rect.height * dpr;
+}
+
+function startWaveAnimation() {
+    let phase = 0;
+    function render() {
+        waveAnimFrame = requestAnimationFrame(render);
+        if (!waveCanvas || !waveCtx) return;
+        const w = waveCanvas.width;
+        const h = waveCanvas.height;
+        waveCtx.clearRect(0, 0, w, h);
+
+        if (currentOrbState !== CallState.AI_SPEAKING && currentOrbState !== CallState.CUSTOMER_SPEAKING && currentOrbState !== CallState.WAITING_FOR_CUSTOMER) {
+            return;
+        }
+
+        phase += 0.035;
+        const cx = w / 2;
+        const cy = h / 2;
+        const baseRadius = Math.min(w, h) * 0.26;
+        const isSpeaking = (currentOrbState === CallState.AI_SPEAKING);
+
+        const numWaves = 3;
+        for (let i = 0; i < numWaves; i++) {
+            waveCtx.beginPath();
+            const points = 60;
+            const wavePhase = phase + (i * Math.PI / 3);
+            const amplitude = isSpeaking ? (8 + i * 3.5) * (window.devicePixelRatio || 1) : (3 + i * 2) * (window.devicePixelRatio || 1);
+            const color = isSpeaking ? "rgba(6, 182, 212, " : "rgba(34, 211, 238, ";
+            const alpha = 0.4 - i * 0.1;
+
+            for (let j = 0; j <= points; j++) {
+                const angle = (j / points) * Math.PI * 2;
+                const dist = baseRadius + Math.sin(angle * 4 + wavePhase) * amplitude + Math.cos(angle * 2 - wavePhase) * (amplitude * 0.5);
+                const x = cx + Math.cos(angle) * dist;
+                const y = cy + Math.sin(angle) * dist;
+                if (j === 0) waveCtx.moveTo(x, y);
+                else waveCtx.lineTo(x, y);
+            }
+            waveCtx.closePath();
+            waveCtx.strokeStyle = color + alpha + ")";
+            waveCtx.lineWidth = 1.8 * (window.devicePixelRatio || 1);
+            waveCtx.stroke();
+        }
+    }
+    render();
+}
 
 function setupListeners() {
     elStartBtn.addEventListener("click", startConversation);
@@ -145,56 +214,266 @@ function playVoicePreview() {
 // Avatar SVG Helper
 // ─────────────────────────────────────────────────────────────────────────────
 function makeSvgAvatar(name, gender) {
-    const initial  = (name || "?").charAt(0).toUpperCase();
-    const isFemale = gender === "Female";
-    const c1 = isFemale ? "#a855f7" : "#6366f1";
-    const c2 = isFemale ? "#ec4899" : "#3b82f6";
+    const isFemale = (gender === "Female");
+    const nameLower = (name || "").toLowerCase();
+    
+    // Gradient backdrops & skin tones for realistic human portraits
+    let c1 = isFemale ? "#2A4032" : "#213945";
+    let c2 = isFemale ? "#122017" : "#0E181F";
+    let skinBase = "#FCE0D1";
+    let skinShadow = "#E5B9A4";
+    let hairColor = "#2A1810";
+    let hairHighlight = "#4A3024";
+    let suitColor = "#1B2E23";
+    let accent = "#A7C1A1";
+    
+    if (nameLower === "sophia") {
+        c1 = "#2A4032"; c2 = "#122017"; skinBase = "#FCE0D1"; skinShadow = "#E5B9A4"; hairColor = "#2A1810"; hairHighlight = "#4A3024"; suitColor = "#1B2E23"; accent = "#A7C1A1";
+    } else if (nameLower === "maya") {
+        c1 = "#344732"; c2 = "#162316"; skinBase = "#F8D7C4"; skinShadow = "#E0AF98"; hairColor = "#422117"; hairHighlight = "#663728"; suitColor = "#263624"; accent = "#C8D6B8";
+    } else if (nameLower === "ananya") {
+        c1 = "#213D48"; c2 = "#0E1B22"; skinBase = "#F5CEB6"; skinShadow = "#DAA489"; hairColor = "#1A1B22"; hairHighlight = "#323440"; suitColor = "#172A34"; accent = "#7FBFCF";
+    } else if (nameLower === "arjun") {
+        c1 = "#253429"; c2 = "#101B14"; skinBase = "#E8BC9B"; skinShadow = "#CD9772"; hairColor = "#181513"; hairHighlight = "#302B27"; suitColor = "#17241B"; accent = "#94B48E";
+    } else if (nameLower === "david") {
+        c1 = "#1B3029"; c2 = "#0B1713"; skinBase = "#FADCB9"; skinShadow = "#DFB087"; hairColor = "#291A14"; hairHighlight = "#452E25"; suitColor = "#111E19"; accent = "#A7C1A1";
+    }
+
     const svgNS = "http://www.w3.org/2000/svg";
-    const svg   = document.createElementNS(svgNS, "svg");
+    const svg = document.createElementNS(svgNS, "svg");
     svg.setAttribute("viewBox", "0 0 100 100");
     svg.setAttribute("width", "100"); 
     svg.setAttribute("height", "100");
 
     const defs = document.createElementNS(svgNS, "defs");
-    const grad  = document.createElementNS(svgNS, "linearGradient");
-    const gId   = "g_" + name.replace(/\s/g, "_");
+    const grad = document.createElementNS(svgNS, "linearGradient");
+    const gId  = "g_" + name.replace(/\s/g, "_");
     grad.setAttribute("id", gId);
     grad.setAttribute("x1","0%"); grad.setAttribute("y1","0%");
     grad.setAttribute("x2","100%"); grad.setAttribute("y2","100%");
     
     const s1 = document.createElementNS(svgNS, "stop");
     s1.setAttribute("offset","0%"); s1.setAttribute("stop-color", c1);
-    
     const s2 = document.createElementNS(svgNS, "stop");
     s2.setAttribute("offset","100%"); s2.setAttribute("stop-color", c2);
     
-    grad.appendChild(s1); 
-    grad.appendChild(s2); 
-    defs.appendChild(grad);
+    grad.appendChild(s1); grad.appendChild(s2); defs.appendChild(grad);
+
+    // Skin gradient
+    const skinGrad = document.createElementNS(svgNS, "linearGradient");
+    const skinId = "skin_" + name.replace(/\s/g, "_");
+    skinGrad.setAttribute("id", skinId);
+    skinGrad.setAttribute("x1","0%"); skinGrad.setAttribute("y1","0%");
+    skinGrad.setAttribute("x2","0%"); skinGrad.setAttribute("y2","100%");
+    const sk1 = document.createElementNS(svgNS, "stop"); sk1.setAttribute("offset","0%"); sk1.setAttribute("stop-color", skinBase);
+    const sk2 = document.createElementNS(svgNS, "stop"); sk2.setAttribute("offset","100%"); sk2.setAttribute("stop-color", skinShadow);
+    skinGrad.appendChild(sk1); skinGrad.appendChild(sk2); defs.appendChild(skinGrad);
+
     svg.appendChild(defs);
 
-    const circle = document.createElementNS(svgNS, "circle");
-    circle.setAttribute("cx","50"); 
-    circle.setAttribute("cy","50");
-    circle.setAttribute("r","50"); 
-    circle.setAttribute("fill", `url(#${gId})`);
-    svg.appendChild(circle);
+    // Background circle
+    const bg = document.createElementNS(svgNS, "circle");
+    bg.setAttribute("cx","50"); bg.setAttribute("cy","50"); bg.setAttribute("r","50");
+    bg.setAttribute("fill", `url(#${gId})`);
+    svg.appendChild(bg);
 
-    const text = document.createElementNS(svgNS, "text");
-    text.setAttribute("x","50%"); 
-    text.setAttribute("y","54%");
-    text.setAttribute("dominant-baseline","middle");
-    text.setAttribute("text-anchor","middle");
-    text.setAttribute("font-size","42"); 
-    text.setAttribute("font-weight","700");
-    text.setAttribute("fill","#ffffff");
-    text.setAttribute("font-family","Outfit, sans-serif");
-    text.textContent = initial;
-    svg.appendChild(text);
+    // Subtle metallic frame ring
+    const ring = document.createElementNS(svgNS, "circle");
+    ring.setAttribute("cx","50"); ring.setAttribute("cy","50"); ring.setAttribute("r","46");
+    ring.setAttribute("fill", "none");
+    ring.setAttribute("stroke", accent);
+    ring.setAttribute("stroke-opacity", "0.35");
+    ring.setAttribute("stroke-width", "1");
+    svg.appendChild(ring);
+
+    // Realistic Human Portrait Silhouette
+    const gAvatar = document.createElementNS(svgNS, "g");
+
+    // Formal Suit / Blazer Jacket
+    const body = document.createElementNS(svgNS, "path");
+    body.setAttribute("d", "M 16 88 C 16 66, 28 60, 50 60 C 72 60, 84 66, 84 88 Z");
+    body.setAttribute("fill", suitColor);
+    gAvatar.appendChild(body);
+
+    // Blazer Lapels
+    const lapelL = document.createElementNS(svgNS, "path");
+    lapelL.setAttribute("d", "M 28 88 L 42 60 L 50 72 Z");
+    lapelL.setAttribute("fill", "#0E1813"); lapelL.setAttribute("fill-opacity", "0.4");
+    gAvatar.appendChild(lapelL);
+
+    const lapelR = document.createElementNS(svgNS, "path");
+    lapelR.setAttribute("d", "M 72 88 L 58 60 L 50 72 Z");
+    lapelR.setAttribute("fill", "#0E1813"); lapelR.setAttribute("fill-opacity", "0.4");
+    gAvatar.appendChild(lapelR);
+
+    // White Shirt Inner V
+    const shirt = document.createElementNS(svgNS, "polygon");
+    shirt.setAttribute("points", "42,60 50,75 58,60");
+    shirt.setAttribute("fill", "#F3F0E6");
+    gAvatar.appendChild(shirt);
+
+    if (!isFemale) {
+        // Formal Silk Tie for Male
+        const tie = document.createElementNS(svgNS, "polygon");
+        tie.setAttribute("points", "48,64 52,64 53,82 50,87 47,82");
+        tie.setAttribute("fill", accent);
+        gAvatar.appendChild(tie);
+    }
+
+    // Neck with shading
+    const neck = document.createElementNS(svgNS, "rect");
+    neck.setAttribute("x", "43"); neck.setAttribute("y", "45"); neck.setAttribute("width", "14"); neck.setAttribute("height", "17"); neck.setAttribute("rx", "5");
+    neck.setAttribute("fill", `url(#${skinId})`);
+    gAvatar.appendChild(neck);
+
+    // Neck shadow under chin
+    const neckShadow = document.createElementNS(svgNS, "ellipse");
+    neckShadow.setAttribute("cx", "50"); neckShadow.setAttribute("cy", "47"); neckShadow.setAttribute("rx", "7"); neckShadow.setAttribute("ry", "3");
+    neckShadow.setAttribute("fill", skinShadow); neckShadow.setAttribute("fill-opacity", "0.6");
+    gAvatar.appendChild(neckShadow);
+
+    // Face Shape
+    const head = document.createElementNS(svgNS, "ellipse");
+    head.setAttribute("cx", "50"); head.setAttribute("cy", "35"); head.setAttribute("rx", "15.5"); head.setAttribute("ry", "17.5");
+    head.setAttribute("fill", `url(#${skinId})`);
+    gAvatar.appendChild(head);
+
+    // Ears
+    const earL = document.createElementNS(svgNS, "circle");
+    earL.setAttribute("cx", "34"); earL.setAttribute("cy", "36"); earL.setAttribute("r", "3.2"); earL.setAttribute("fill", skinBase);
+    gAvatar.appendChild(earL);
+
+    const earR = document.createElementNS(svgNS, "circle");
+    earR.setAttribute("cx", "66"); earR.setAttribute("cy", "36"); earR.setAttribute("r", "3.2"); earR.setAttribute("fill", skinBase);
+    gAvatar.appendChild(earR);
+
+    // Cheek soft glow
+    const cheekL = document.createElementNS(svgNS, "circle");
+    cheekL.setAttribute("cx", "42"); cheekL.setAttribute("cy", "38"); cheekL.setAttribute("r", "4"); cheekL.setAttribute("fill", "#E89B8C"); cheekL.setAttribute("fill-opacity", "0.2");
+    gAvatar.appendChild(cheekL);
+    const cheekR = document.createElementNS(svgNS, "circle");
+    cheekR.setAttribute("cx", "58"); cheekR.setAttribute("cy", "38"); cheekR.setAttribute("r", "4"); cheekR.setAttribute("fill", "#E89B8C"); cheekR.setAttribute("fill-opacity", "0.2");
+    gAvatar.appendChild(cheekR);
+
+    // Realistic Eyes
+    const eyeWhiteL = document.createElementNS(svgNS, "ellipse");
+    eyeWhiteL.setAttribute("cx", "43"); eyeWhiteL.setAttribute("cy", "34"); eyeWhiteL.setAttribute("rx", "3"); eyeWhiteL.setAttribute("ry", "2"); eyeWhiteL.setAttribute("fill", "#FFFFFF");
+    gAvatar.appendChild(eyeWhiteL);
+
+    const eyeWhiteR = document.createElementNS(svgNS, "ellipse");
+    eyeWhiteR.setAttribute("cx", "57"); eyeWhiteR.setAttribute("cy", "34"); eyeWhiteR.setAttribute("rx", "3"); eyeWhiteR.setAttribute("ry", "2"); eyeWhiteR.setAttribute("fill", "#FFFFFF");
+    gAvatar.appendChild(eyeWhiteR);
+
+    // Iris & Pupil
+    const irisL = document.createElementNS(svgNS, "circle");
+    irisL.setAttribute("cx", "43"); irisL.setAttribute("cy", "34"); irisL.setAttribute("r", "1.8"); irisL.setAttribute("fill", "#2C1D18");
+    gAvatar.appendChild(irisL);
+
+    const irisR = document.createElementNS(svgNS, "circle");
+    irisR.setAttribute("cx", "57"); irisR.setAttribute("cy", "34"); irisR.setAttribute("r", "1.8"); irisR.setAttribute("fill", "#2C1D18");
+    gAvatar.appendChild(irisR);
+
+    // Pupil Glint
+    const glintL = document.createElementNS(svgNS, "circle");
+    glintL.setAttribute("cx", "42.3"); glintL.setAttribute("cy", "33.3"); glintL.setAttribute("r", "0.6"); glintL.setAttribute("fill", "#FFFFFF");
+    gAvatar.appendChild(glintL);
+
+    const glintR = document.createElementNS(svgNS, "circle");
+    glintR.setAttribute("cx", "56.3"); glintR.setAttribute("cy", "33.3"); glintR.setAttribute("r", "0.6"); glintR.setAttribute("fill", "#FFFFFF");
+    gAvatar.appendChild(glintR);
+
+    // Eyebrows
+    const browL = document.createElementNS(svgNS, "path");
+    browL.setAttribute("d", "M 39 30 Q 43 28.2 47 30"); browL.setAttribute("stroke", hairColor); browL.setAttribute("stroke-width", "1.4"); browL.setAttribute("fill", "none"); browL.setAttribute("stroke-linecap", "round");
+    gAvatar.appendChild(browL);
+
+    const browR = document.createElementNS(svgNS, "path");
+    browR.setAttribute("d", "M 53 30 Q 57 28.2 61 30"); browR.setAttribute("stroke", hairColor); browR.setAttribute("stroke-width", "1.4"); browR.setAttribute("fill", "none"); browR.setAttribute("stroke-linecap", "round");
+    gAvatar.appendChild(browR);
+
+    // Nose
+    const nose = document.createElementNS(svgNS, "path");
+    nose.setAttribute("d", "M 50 34 L 49.2 39.5 Q 50 40.5 51 39.8");
+    nose.setAttribute("stroke", skinShadow); nose.setAttribute("stroke-width", "1.2"); nose.setAttribute("fill", "none"); nose.setAttribute("stroke-linecap", "round");
+    gAvatar.appendChild(nose);
+
+    // Natural Smile Lips
+    const lips = document.createElementNS(svgNS, "path");
+    lips.setAttribute("d", "M 44 43 Q 50 47 56 43");
+    lips.setAttribute("stroke", "#B25E50"); lips.setAttribute("stroke-width", "1.8"); lips.setAttribute("fill", "none"); lips.setAttribute("stroke-linecap", "round");
+    gAvatar.appendChild(lips);
+
+    // Realistic Hair Styling (Female vs Male)
+    if (isFemale) {
+        const hair = document.createElementNS(svgNS, "path");
+        if (nameLower === "ananya") {
+            // Sleek Bun Updo
+            hair.setAttribute("d", "M 33 34 C 33 16, 67 16, 67 34 C 68 22, 60 14, 50 14 C 40 14, 32 22, 33 34 Z M 43 14 C 43 7, 57 7, 57 14 Z");
+        } else {
+            // Layered Professional Bob Haircut
+            hair.setAttribute("d", "M 32 35 C 30 16, 70 16, 68 35 C 70 48, 66 54, 63 56 C 63 43, 64 24, 50 21 C 36 24, 37 43, 37 56 C 34 54, 30 48, 32 35 Z");
+        }
+        hair.setAttribute("fill", hairColor);
+        gAvatar.appendChild(hair);
+
+        // Hair Strand Highlights
+        const highlight = document.createElementNS(svgNS, "path");
+        highlight.setAttribute("d", "M 37 25 Q 50 19 63 25");
+        highlight.setAttribute("stroke", hairHighlight); highlight.setAttribute("stroke-width", "1.5"); highlight.setAttribute("fill", "none"); highlight.setAttribute("stroke-opacity", "0.6");
+        gAvatar.appendChild(highlight);
+    } else {
+        // Executive Male Haircut
+        const hair = document.createElementNS(svgNS, "path");
+        hair.setAttribute("d", "M 32 33 C 32 17, 68 17, 68 33 C 68 24, 62 19, 50 19 C 38 19, 32 24, 32 33 Z");
+        hair.setAttribute("fill", hairColor);
+        gAvatar.appendChild(hair);
+
+        // Male Hair Highlight
+        const highlight = document.createElementNS(svgNS, "path");
+        highlight.setAttribute("d", "M 36 22 Q 50 18 62 23");
+        highlight.setAttribute("stroke", hairHighlight); highlight.setAttribute("stroke-width", "1.5"); highlight.setAttribute("fill", "none"); highlight.setAttribute("stroke-opacity", "0.6");
+        gAvatar.appendChild(highlight);
+    }
+
+    // Modern Metallic AI Headset & Mic Boom
+    const headset = document.createElementNS(svgNS, "path");
+    headset.setAttribute("d", "M 32 33 A 19.5 19.5 0 0 1 68 33");
+    headset.setAttribute("fill", "none");
+    headset.setAttribute("stroke", accent);
+    headset.setAttribute("stroke-width", "2.2");
+    headset.setAttribute("stroke-linecap", "round");
+    gAvatar.appendChild(headset);
+
+    const earCap = document.createElementNS(svgNS, "circle");
+    earCap.setAttribute("cx", "33"); earCap.setAttribute("cy", "35"); earCap.setAttribute("r", "3.5");
+    earCap.setAttribute("fill", accent);
+    gAvatar.appendChild(earCap);
+
+    const micBoom = document.createElementNS(svgNS, "path");
+    micBoom.setAttribute("d", "M 33 35 L 43 45");
+    micBoom.setAttribute("stroke", accent);
+    micBoom.setAttribute("stroke-width", "1.8");
+    micBoom.setAttribute("stroke-linecap", "round");
+    gAvatar.appendChild(micBoom);
+
+    const micTip = document.createElementNS(svgNS, "circle");
+    micTip.setAttribute("cx", "44"); micTip.setAttribute("cy", "46"); micTip.setAttribute("r", "2");
+    micTip.setAttribute("fill", "#F3F0E6");
+    gAvatar.appendChild(micTip);
+
+    svg.appendChild(gAvatar);
 
     const svgStr = new XMLSerializer().serializeToString(svg);
     return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgStr)));
 }
+
+const REAL_HUMAN_AVATARS = {
+    "sophia": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=300&q=80",
+    "maya":   "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=300&q=80",
+    "ananya": "https://images.unsplash.com/photo-1589156280159-27698a70f29e?auto=format&fit=crop&w=300&q=80",
+    "arjun":  "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80",
+    "david":  "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80"
+};
 
 function createAvatarElement(voice, sizePx) {
     const img = document.createElement("img");
@@ -204,7 +483,16 @@ function createAvatarElement(voice, sizePx) {
     img.style.borderRadius = "50%";
     img.style.objectFit   = "cover";
     img.style.display     = "block";
-    img.src = makeSvgAvatar(voice.name, voice.gender);
+    const nameKey = (voice.name || "").toLowerCase();
+    const photoUrl = REAL_HUMAN_AVATARS[nameKey];
+    if (photoUrl) {
+        img.src = photoUrl;
+        img.onerror = () => {
+            img.src = makeSvgAvatar(voice.name, voice.gender);
+        };
+    } else {
+        img.src = makeSvgAvatar(voice.name, voice.gender);
+    }
     return img;
 }
 
@@ -230,7 +518,7 @@ function renderVoiceCircle() {
     elVoiceNodes.innerHTML = "";
     const total  = voices.length;
     const isMobile = window.innerWidth <= 768;
-    const radius = isMobile ? 112 : 138;
+    const radius = isMobile ? 104 : 130;
 
     voices.forEach((voice, idx) => {
         const node = document.createElement("div");
@@ -242,7 +530,11 @@ function renderVoiceCircle() {
         node.appendChild(img);
 
         const angle = (idx / total) * 2 * Math.PI - Math.PI / 2;
-        node.style.transform = `translate(${Math.cos(angle) * radius}px, ${Math.sin(angle) * radius}px)`;
+        const tx = Math.round(Math.cos(angle) * radius);
+        const ty = Math.round(Math.sin(angle) * radius);
+        node.style.setProperty("--tx", `${tx}px`);
+        node.style.setProperty("--ty", `${ty}px`);
+        node.style.transform = `translate(${tx}px, ${ty}px)`;
         node.addEventListener("click", () => selectVoice(voice.name));
         elVoiceNodes.appendChild(node);
     });
@@ -267,6 +559,19 @@ function selectVoice(voiceName) {
     elActiveAvatarWrap.innerHTML = "";
     const bigImg = createAvatarElement(activeVoiceObj, 56);
     elActiveAvatarWrap.appendChild(bigImg);
+
+    // Update Center Orb Agent Avatar Face
+    const elCenterAvatarWrap = document.getElementById("center-agent-avatar-wrap");
+    if (elCenterAvatarWrap) {
+        elCenterAvatarWrap.classList.add("avatar-swapping");
+        setTimeout(() => {
+            elCenterAvatarWrap.innerHTML = "";
+            const centerImg = createAvatarElement(activeVoiceObj, 76);
+            centerImg.className = "center-agent-face-img";
+            elCenterAvatarWrap.appendChild(centerImg);
+            elCenterAvatarWrap.classList.remove("avatar-swapping");
+        }, 120);
+    }
 
     elActiveVoiceName.textContent = activeVoiceObj.name;
     elActiveVoiceRole.textContent = activeVoiceObj.description;
@@ -312,7 +617,7 @@ async function ensureAudioContexts() {
     }
 
     if (!playbackContext) {
-        playbackContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 8000 });
+        playbackContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
     }
     if (playbackContext.state === "suspended") {
         await playbackContext.resume();
@@ -323,8 +628,18 @@ async function ensureAudioContexts() {
     activeSources = [];
 }
 
+let micSeqCounter = 0;
+
 async function setupAudioCapture() {
     if (!captureContext || !mediaStream) return;
+
+    const audioTrack = mediaStream.getAudioTracks()[0];
+    const isLive = audioTrack && audioTrack.readyState === "live" && audioTrack.enabled && !audioTrack.muted;
+    console.log(`[MIC-HEALTH] permission=granted track_state=${audioTrack ? audioTrack.readyState : 'none'} track_enabled=${audioTrack ? audioTrack.enabled : false} track_muted=${audioTrack ? audioTrack.muted : true} sample_rate=${captureContext.sampleRate} channels=1 websocket_ready=${websocket && websocket.readyState === WebSocket.OPEN}`);
+
+    if (!isLive) {
+        console.warn("[MIC-HEALTH] Warning: Audio track is not live/active!");
+    }
 
     try {
         const workletUrl = `${window.location.origin}/static/js/audio-capture-worklet.js`;
@@ -338,13 +653,19 @@ async function setupAudioCapture() {
             if (!websocket || websocket.readyState !== WebSocket.OPEN || isMuted) return;
 
             const float32 = evt.data.data;
-            const downsampled = downsample(float32, captureContext.sampleRate, 8000);
+            const downsampled = downsample(float32, captureContext.sampleRate, 16000);
             const int16 = float32ToInt16PCM(downsampled);
+            
+            micSeqCounter++;
+            const durMs = (int16.byteLength / 32.0); // 16kHz 16-bit mono = 32 bytes/ms
+            if (micSeqCounter % 50 === 1) {
+                console.log(`[MIC-WS-SEND] session=${sessionId} seq=${micSeqCounter} bytes=${int16.byteLength} format=pcm_s16le sample_rate=16000 dur_ms=${durMs.toFixed(0)}`);
+            }
             websocket.send(int16);
         };
 
         sourceNode.connect(workletNode);
-        console.log("[Audio] Capture worklet connected.");
+        console.log("[Audio] Capture worklet connected (16kHz PCM_S16LE).");
 
     } catch (err) {
         console.warn(`[Audio] AudioWorklet failed (${err.message}), falling back to ScriptProcessor.`);
@@ -354,13 +675,21 @@ async function setupAudioCapture() {
         scriptProcessor.onaudioprocess = (evt) => {
             if (!websocket || websocket.readyState !== WebSocket.OPEN || isMuted) return;
             const float32 = evt.inputBuffer.getChannelData(0);
-            const downsampled = downsample(float32, captureContext.sampleRate, 8000);
+            const downsampled = downsample(float32, captureContext.sampleRate, 16000);
             const int16 = float32ToInt16PCM(downsampled);
+            
+            micSeqCounter++;
+            if (micSeqCounter % 50 === 1) {
+                console.log(`[MIC-WS-SEND] session=${sessionId} seq=${micSeqCounter} bytes=${int16.byteLength} format=pcm_s16le sample_rate=16000`);
+            }
             websocket.send(int16);
         };
 
         sourceNode.connect(scriptProcessor);
-        scriptProcessor.connect(captureContext.destination);
+        const silentGain = captureContext.createGain();
+        silentGain.gain.value = 0;
+        scriptProcessor.connect(silentGain);
+        silentGain.connect(captureContext.destination);
     }
 }
 
@@ -437,6 +766,10 @@ async function startConversation() {
 
         const sessionData = await res.json();
         sessionId = sessionData.session_id;
+
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("Microphone access is blocked by your browser because this demo is currently on HTTP (http://147.93.171.146). Modern browsers require HTTPS or enabling the flag chrome://flags/#unsafely-treat-insecure-origin-as-secure for this IP.");
+        }
 
         mediaStream = await navigator.mediaDevices.getUserMedia({
             audio: {
@@ -550,25 +883,20 @@ function stopKeepalive() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Playout and Audio Output Queue
 // ─────────────────────────────────────────────────────────────────────────────
-function decodeUlaw(u) {
-    u = (~u) & 0xFF;
-    const sign = u & 0x80;
-    const exp  = (u >> 4) & 0x07;
-    const mant = u & 0x0F;
-    let s = ((mant << 3) + 132) << exp;
-    s -= 132;
-    return (sign ? -s : s) / 32768.0;
-}
-
-function playMulaw(arrayBuffer) {
+// High-Fidelity 24kHz Linear PCM Audio Playout
+// ─────────────────────────────────────────────────────────────────────────────
+function playPcmAudio(arrayBuffer) {
     if (!playbackContext || !audioContextStarted) return;
     if (playbackContext.state === "suspended") playbackContext.resume();
 
-    const u8  = new Uint8Array(arrayBuffer);
-    const f32 = new Float32Array(u8.length);
-    for (let i = 0; i < u8.length; i++) f32[i] = decodeUlaw(u8[i]);
+    // 24kHz 16-bit Linear PCM (pcm_s16le)
+    const int16 = new Int16Array(arrayBuffer);
+    const f32   = new Float32Array(int16.length);
+    for (let i = 0; i < int16.length; i++) {
+        f32[i] = int16[i] / 32768.0;
+    }
 
-    const buf = playbackContext.createBuffer(1, f32.length, 8000);
+    const buf = playbackContext.createBuffer(1, f32.length, 24000);
     buf.getChannelData(0).set(f32);
 
     const src = playbackContext.createBufferSource();
@@ -576,8 +904,15 @@ function playMulaw(arrayBuffer) {
     src.connect(playbackContext.destination);
 
     const now = playbackContext.currentTime;
-    if (nextPlayTime < now + 0.02) {
-        nextPlayTime = now + 0.05; // 50ms safety lookahead jitter buffer
+    const gapMs = (now - nextPlayTime) * 1000.0;
+    if (nextPlayTime > 0 && gapMs > 30) {
+        console.warn(`[TTS-FLOW-BROWSER] playback_gap_ms=${gapMs.toFixed(1)}ms > 30ms limit!`);
+    }
+
+    // Continuous gapless scheduling: schedule next chunk immediately at nextPlayTime
+    // If nextPlayTime is in the past, align with currentTime + 5ms minimal lookahead
+    if (nextPlayTime < now + 0.005) {
+        nextPlayTime = now + 0.005;
     }
     src.start(nextPlayTime);
     nextPlayTime += buf.duration;
@@ -586,6 +921,16 @@ function playMulaw(arrayBuffer) {
     src.onended = () => {
         const i = activeSources.indexOf(src);
         if (i !== -1) activeSources.splice(i, 1);
+        if (activeSources.length === 0 && playbackContext && playbackContext.currentTime >= nextPlayTime - 0.05) {
+            if (websocket && websocket.readyState === WebSocket.OPEN) {
+                console.log("[MIC-SYNC] All AI playback completed. Sending playback_ended to backend.");
+                try {
+                    websocket.send(JSON.stringify({ event: "playback_ended" }));
+                } catch (err) {
+                    console.warn("[MIC-SYNC] Failed to send playback_ended:", err);
+                }
+            }
+        }
     };
 }
 
@@ -601,7 +946,7 @@ function stopAllAudio() {
 // ─────────────────────────────────────────────────────────────────────────────
 function handleWsMessage(evt) {
     if (evt.data instanceof ArrayBuffer) {
-        playMulaw(evt.data);
+        playPcmAudio(evt.data);
         return;
     }
     try {
@@ -618,6 +963,7 @@ function handleWsMessage(evt) {
 
 // ─── Update UI Orb State ─────────────────────────────────────────────────────
 function setOrbState(state, customLabel) {
+    currentOrbState = state;
     elOrb.className = "orb-pulsar";
     let label = customLabel;
     let badgeClass = "status-ready";

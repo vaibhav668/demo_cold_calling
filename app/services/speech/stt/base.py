@@ -8,7 +8,10 @@ class SpeechToTextProvider(ABC):
     async def transcribe_utterance(
         self,
         audio_bytes: bytes,
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        prompt: Optional[str] = None,
+        session_id: Optional[str] = None,
+        turn_id: int = 1
     ) -> Optional[str]:
         """
         Transcribes the given raw G.711 mu-law audio bytes into text.

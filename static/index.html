@@ -3,178 +3,200 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Voice Cold Calling Agent — ElevenLabs Experience</title>
-    <!-- Google Fonts Inter & Outfit -->
+    <title>VoiceAgent.AI — AI Voice Agent Platform</title>
+    <meta name="description" content="Premium AI voice agent platform — real-time multilingual voice conversations with zero latency.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- FontAwesome Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Custom CSS styles -->
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <link rel="stylesheet" href="/static/css/styles.css?v=3.4">
 </head>
 <body>
-    <!-- Background Glow Blobs -->
-    <div class="bg-glow-container">
+
+    <!-- Subtle background radial glow -->
+    <div class="bg-glow-container" aria-hidden="true">
         <div class="glow-spot spot-1"></div>
         <div class="glow-spot spot-2"></div>
         <div class="glow-spot spot-3"></div>
     </div>
-    
+
+    <!-- Main Application Frame -->
     <div class="app-layout">
-        <!-- Site Header -->
-        <header class="site-header">
-            <div class="brand">
-                <div class="brand-icon">
-                    <i class="fa-solid fa-microphone-lines"></i>
+        <div class="console-frame">
+
+            <!-- ── Frame Header ── -->
+            <header class="console-header site-header">
+                <div class="brand">
+                    <img src="/static/images/mind_masters_logo.png" alt="Mind Masters AI Logo" class="brand-logo-img">
+                    <span class="brand-title">Mind Masters AI · <span class="highlight">Cold Calling</span></span>
                 </div>
-                <span class="brand-title">VoiceAgent<span class="highlight">.AI</span></span>
+                <div class="header-badge">
+                    <span class="badge-dot" aria-hidden="true"></span>
+                    <span>VOICE ENGINE READY</span>
+                </div>
+            </header>
+
+            <!-- ── Hero Title Section ── -->
+            <div class="hero-title-section">
+                <h1 class="hero-headline">AUTONOMOUS COLD CALLING <span class="cyan-highlight"></span></h1>
+                <p class="hero-subtitle">Experience human-like AI agents built for real-time cold calling, lead qualification, follow-ups, and sales conversations.</p>
+                <div class="cyan-divider" aria-hidden="true"></div>
             </div>
-            <div class="header-badge">
-                <span class="badge-dot"></span>
-                <span>ElevenLabs Style Engine</span>
-            </div>
-        </header>
 
-        <!-- Hero Section -->
-        <section class="hero-section">
-            <h1 class="hero-title">Hyper-Realistic <span class="gradient-text">AI Voice Agents</span></h1>
-            <p class="hero-subtitle">Experience state-driven cold calling representatives with zero latency, human voice pacing, and dynamic outcome execution.</p>
-        </section>
-
-        <!-- Main Centered Demo Card Section -->
-        <main class="demo-section">
-            <div class="demo-card glass-container">
-                <!-- Top Control Bar (Language & Industry Dropdowns) -->
-                <div class="controls-bar">
-                    <div class="control-group">
-                        <label for="language-select">
-                            <i class="fa-solid fa-globe"></i> Language
-                        </label>
-                        <div class="select-wrapper">
-                            <select id="language-select">
-                                <option value="English">English</option>
-                                <option value="Hindi">Hindi (हिंदी)</option>
-                                <option value="Telugu">Telugu (తెలుగు)</option>
-                            </select>
-                            <i class="fa-solid fa-chevron-down select-arrow"></i>
-                        </div>
-                    </div>
-
-                    <div class="control-group">
-                        <label for="industry-select">
-                            <i class="fa-solid fa-building-user"></i> Scenario
-                        </label>
-                        <div class="select-wrapper">
-                            <select id="industry-select">
-                                <option value="hospital">Hospital Appointment Receptionist</option>
-                                <option value="real_estate">Real Estate Sales Executive</option>
-                            </select>
-                            <i class="fa-solid fa-chevron-down select-arrow"></i>
-                        </div>
+            <!-- ── Top Controls ── -->
+            <div class="controls-bar">
+                <div class="control-group">
+                    <label for="language-select">
+                        <i class="fa-solid fa-globe" aria-hidden="true"></i>
+                        Language
+                    </label>
+                    <div class="select-wrapper">
+                        <select id="language-select" aria-label="Select language">
+                            <option value="English">English</option>
+                            <option value="Hindi">Hindi (हिंदी)</option>
+                            <option value="Telugu">Telugu (తెలుగు)</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down select-arrow" aria-hidden="true"></i>
                     </div>
                 </div>
 
-                <!-- Showcase Arena Grid: Center Orbit Arena + Active Voice Card -->
-                <div class="showcase-grid">
-                    <!-- Center Voice Orbit Arena -->
-                    <div class="orbit-stage">
-                        <div class="orbit-wrapper">
-                            <div class="orbit-ring ring-outer"></div>
-                            <div class="orbit-ring ring-inner"></div>
+                <div class="control-group">
+                    <label for="industry-select">
+                        <i class="fa-solid fa-building-user" aria-hidden="true"></i>
+                        Scenario
+                    </label>
+                    <div class="select-wrapper">
+                        <select id="industry-select" aria-label="Select scenario">
+                            <option value="hospital">Hospital Appointment Receptionist</option>
+                            <option value="real_estate">Real Estate Sales Executive</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down select-arrow" aria-hidden="true"></i>
+                    </div>
+                </div>
+            </div>
 
-                            <!-- Central AI Orb -->
-                            <div class="orb-container">
-                                <div id="ai-orb" class="orb-pulsar state-disconnected">
-                                    <div class="orb-core"></div>
-                                    <div class="orb-ring ring-1"></div>
-                                    <div class="orb-ring ring-2"></div>
-                                    <div class="orb-ring ring-3"></div>
+            <!-- ── Main Showcase Grid ── -->
+            <div class="showcase-grid">
+
+                <!-- Central Orb Stage -->
+                <div class="orbit-stage">
+                    <div class="orbit-wrapper">
+                        <!-- Ambient orbit guide rings -->
+                        <div class="orbit-ring ring-outer" aria-hidden="true"></div>
+                        <div class="orbit-ring ring-inner" aria-hidden="true"></div>
+
+                        <!-- Arc Reactor Tech Living Core -->
+                        <div class="orb-container">
+                            <div id="ai-orb" class="orb-pulsar state-disconnected" role="img" aria-label="Voice agent arc reactor status core">
+                                <!-- Iron-Man style Arc Reactor Rings -->
+                                <div class="reactor-ring reactor-outer" aria-hidden="true"></div>
+                                <div class="reactor-ring reactor-middle" aria-hidden="true"></div>
+                                <div class="reactor-ring reactor-inner" aria-hidden="true"></div>
+                                <div class="reactor-ticks" aria-hidden="true"></div>
+
+                                <!-- Waveform canvas for speaking/listening states -->
+                                <canvas id="orb-wave-canvas" class="orb-wave-canvas" aria-hidden="true"></canvas>
+
+                                <!-- Center Selected Agent Avatar Face -->
+                                <div id="center-agent-avatar-wrap" class="center-agent-avatar-frame" aria-hidden="true"></div>
+
+                                <!-- Core Arc Heart -->
+                                <div class="orb-core" aria-hidden="true">
+                                    <div class="reactor-core-heart" aria-hidden="true">
+                                        <div class="reactor-tri-1"></div>
+                                        <div class="reactor-tri-2"></div>
+                                        <div class="reactor-center-lens"></div>
+                                    </div>
+                                    <div class="orb-inner-glow" aria-hidden="true"></div>
                                 </div>
-                            </div>
 
-                            <!-- 5 Voice Avatar Orbit Nodes -->
-                            <div id="voice-nodes-container" class="voice-orbit-container">
-                                <!-- Dynamically populated by JS -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right Side: Active Voice Profile Card -->
-                    <div class="active-voice-panel">
-                        <div class="panel-header">
-                            <div id="active-voice-avatar-wrap" class="active-avatar-frame">
-                                <!-- SVG Avatar injected by JS -->
-                            </div>
-                            <div class="active-voice-meta">
-                                <div class="name-preview-row">
-                                    <h3 id="active-voice-name">Sophia</h3>
-                                    <button id="preview-btn" class="preview-btn" title="Listen Voice Preview">
-                                        <i class="fa-solid fa-play"></i>
-                                    </button>
-                                </div>
-                                <span id="active-voice-role" class="voice-role-badge">Professional Female</span>
+                                <div class="orb-ring ring-1" aria-hidden="true"></div>
+                                <div class="orb-ring ring-2" aria-hidden="true"></div>
+                                <div class="orb-ring ring-3" aria-hidden="true"></div>
                             </div>
                         </div>
 
-                        <div class="panel-body">
-                            <div class="info-block">
-                                <span class="block-label">Supported Languages</span>
-                                <span id="active-voice-langs" class="block-value">English • Hindi • Telugu</span>
-                            </div>
-                            <div class="info-block">
-                                <span class="block-label">Voice Bio</span>
-                                <p id="active-voice-desc" class="block-text">Warm, empathetic and conversational voice suitable for healthcare and patient coordination.</p>
-                            </div>
-                            <p id="scenario-info-text" class="hidden"></p>
-                        </div>
-
-                        <div class="panel-footer">
-                            <button id="mute-btn" class="mic-toggle-btn" title="Toggle Microphone" disabled>
-                                <i class="fa-solid fa-microphone"></i>
-                            </button>
-                            <div class="mic-indicator">
-                                <span class="mic-dot"></span>
-                                <span id="mic-status">Mic Ready</span>
-                            </div>
-                        </div>
+                        <!-- Voice Avatar Orbit Nodes -->
+                        <div id="voice-nodes-container" class="voice-orbit-container" aria-label="Select a voice"></div>
                     </div>
                 </div>
 
-                <!-- Bottom Primary Action Controls -->
-                <div class="action-footer">
-                    <div class="status-display">
-                        <span class="status-label">Agent State:</span>
-                        <div id="orb-status-text" class="status-pill status-ready">Ready</div>
+                <!-- Right Side: Active Voice Profile Panel -->
+                <div class="active-voice-panel">
+                    <div class="panel-header">
+                        <div id="active-voice-avatar-wrap" class="active-avatar-frame" aria-hidden="true">
+                            <!-- SVG Avatar injected by JS -->
+                        </div>
+                        <div class="active-voice-meta">
+                            <div class="name-preview-row">
+                                <h3 id="active-voice-name">Sophia</h3>
+                                <button id="preview-btn" class="preview-btn" title="Listen Voice Preview" aria-label="Play voice preview">
+                                    <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <span id="active-voice-role" class="voice-role-badge">Professional Female</span>
+                        </div>
                     </div>
 
-                    <div class="button-wrapper">
-                        <button id="start-btn" class="glow-button btn-start">
-                            <i class="fa-solid fa-play"></i>
-                            <span>Start Conversation</span>
+                    <div class="panel-body">
+                        <div class="info-block">
+                            <span class="block-label">Supported Languages</span>
+                            <span id="active-voice-langs" class="block-value">English · Hindi · Telugu</span>
+                        </div>
+                        <div class="info-block">
+                            <span class="block-label">Voice Profile</span>
+                            <p id="active-voice-desc" class="block-text">Warm, empathetic and conversational voice suitable for healthcare and patient coordination.</p>
+                        </div>
+                        <!-- Scenario info text — hidden, used by JS for display -->
+                        <p id="scenario-info-text" class="hidden"></p>
+                    </div>
+
+                    <div class="panel-footer">
+                        <button id="mute-btn" class="mic-toggle-btn" title="Toggle Microphone" aria-label="Toggle microphone" disabled>
+                            <i class="fa-solid fa-microphone" aria-hidden="true"></i>
                         </button>
-                        <button id="end-btn" class="glow-button btn-end hidden">
-                            <i class="fa-solid fa-square"></i>
-                            <span>End Conversation</span>
-                        </button>
+                        <div class="mic-indicator" aria-live="polite">
+                            <span class="mic-dot" aria-hidden="true"></span>
+                            <span id="mic-status">Mic Ready</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </main>
 
-        <!-- Footer -->
+            <!-- ── Bottom Action Bar ── -->
+            <div class="action-footer">
+                <div class="status-display">
+                    <span class="status-label">Agent State</span>
+                    <div id="orb-status-text" class="status-badge status-ready" role="status" aria-live="polite">Ready</div>
+                </div>
+
+                <div class="button-wrapper">
+                    <button id="start-btn" class="glow-button btn-start" aria-label="Start conversation">
+                        <span>TRY A LIVE DEMO </span>
+                        <i class="fa-solid fa-arrow-right cyan-arrow" aria-hidden="true"></i>
+                    </button>
+                    <button id="end-btn" class="glow-button btn-end hidden" aria-label="End conversation">
+                        <i class="fa-solid fa-square" aria-hidden="true"></i>
+                        <span>END CONVERSATION</span>
+                    </button>
+                </div>
+            </div>
+
+        </div><!-- /console-frame -->
+
+        <!-- Minimal footer -->
         <footer class="site-footer">
-            <p>&copy; 2026 VoiceAgent.AI Platform &bull; Real-time ElevenLabs-Style AI Voice Agent Demo</p>
+            <p>© 2026 Mind Masters AI &mdash; Real-Time AI Voice Platform</p>
         </footer>
-    </div>
+    </div><!-- /app-layout -->
 
-    <!-- Thank You Modal -->
-    <div id="thank-you-modal" class="modal-overlay hidden">
+    <!-- Conversation Complete Modal -->
+    <div id="thank-you-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="modal-card glass-modal">
-            <div class="modal-icon-glow">
+            <div class="modal-icon-glow" aria-hidden="true">
                 <i class="fa-solid fa-circle-check"></i>
             </div>
-            <h2>Conversation Complete</h2>
+            <h2 id="modal-title">Conversation Complete</h2>
             <p>The AI Voice Agent successfully concluded the outbound call workflow and released all session resources.</p>
             <div class="modal-actions">
                 <button id="modal-retry-btn" class="modal-btn primary">Start Another Conversation</button>
@@ -182,6 +204,6 @@
         </div>
     </div>
 
-    <script src="/static/js/voice-agent.js"></script>
+    <script src="/static/js/voice-agent.js?v=3.4"></script>
 </body>
 </html>

@@ -16,13 +16,28 @@ COLLECTION_NAME = "knowledge_base"
 # Pre-seeded industry facts
 DEMO_FACTS = {
     "hospital": [
-        "Visiting hours at Mercy Hospital are from 9:00 AM to 7:00 PM daily.",
-        "Parking at Mercy Hospital is completely free for patients and visitors in the adjacent multi-story parking garage.",
-        "Mercy Hospital is located at 123 Health Ave, Suite 100.",
-        "Dr. Sharma is the chief orthopedic surgeon, and Dr. Patel is the chief cardiologist.",
-        "Orthopedics clinic runs from 9:00 AM to 12:00 PM. Cardiology clinic is from 1:00 PM to 4:00 PM.",
-        "Appointments can be rescheduled or cancelled at least 24 hours in advance without any fee.",
-        "Mercy Hospital features a 24/7 Emergency Room and state-of-the-art diagnostic facilities."
+        "CityCare Hospital is located at 123 Health Ave, Suite 100, City Center, Mumbai, Maharashtra 400001, near Central Park Metro Station.",
+        "Contact phone number for CityCare Hospital is +91 22 5550 1234, email is info@citycarehospital.com, and website is www.citycarehospital.com.",
+        "OPD working hours and hospital timings at CityCare Hospital are from 8:00 AM to 8:00 PM daily. The Emergency Room operates 24/7.",
+        "CityCare Hospital supports English, Hindi, and Telugu languages.",
+        "Dr. Sharma is the Chief Orthopedic Surgeon at CityCare Hospital specializing in orthopedic surgery, knee and hip joint replacement, fracture care, spine surgery, and sports medicine with 15+ years of experience, MBBS MS Orthopedics. Specialization: Orthopedics.",
+        "Dr. Sharma's clinic is in Room 102. Consultation fee for Dr. Sharma is ₹800. Working hours are Monday to Saturday from 9:00 AM to 1:00 PM.",
+        "Dr. Patel is the Chief Cardiologist at CityCare Hospital with 12+ years of experience, MBBS MD DM Cardiology. He specializes in cardiovascular care, heart failure, hypertension, ECG, Echo, angioplasty, and pacemaker clinic.",
+        "Dr. Patel's clinic is in Room 204. Consultation fee for Dr. Patel is ₹1000. Working hours are Monday to Saturday from 1:00 PM to 5:00 PM.",
+        "General OPD consultation fee at CityCare Hospital is ₹500.",
+        "Dr. Mehta is the chief pediatrician in Room 105 specializing in child healthcare and vaccinations. Consultation fee is ₹600.",
+        "Cancellation policy: Appointments can be rescheduled or cancelled at least 24 hours in advance without any fee or cancellation charges.",
+        "Rescheduling policy allows free appointment rescheduling up to 24 hours prior to the scheduled appointment.",
+        "Advance booking is available online or via telephone call. Walk-in appointments are accepted subject to token availability.",
+        "Required documents for appointment check-in are government ID proof, previous medical prescriptions or diagnostic reports, and insurance card if applicable.",
+        "ECG test fee at CityCare Hospital is ₹400 with instant report delivery.",
+        "The in-house diagnostic laboratory operates from 7:00 AM to 9:00 PM daily. Home sample collection is available.",
+        "The in-house pharmacy is open 24/7 on the ground floor. Valid prescription is required for medicines. Home delivery is available.",
+        "Cashless insurance is supported for major insurance providers including Star Health, HDFC ERGO, ICICI Lombard, Max Bupa, Care Health, and Bajaj Allianz.",
+        "Accepted payment methods are Cash, Credit Card, Debit Card, UPI, and Net Banking.",
+        "Parking at CityCare Hospital is completely free for patients and visitors in the adjacent multi-story parking garage.",
+        "CityCare Hospital features a 24/7 Emergency Room, ICU, state-of-the-art diagnostic facilities, and dedicated 24/7 ambulance service (+91 22 5550 9999).",
+        "The hospital cafeteria is located on the ground floor and is open from 7:00 AM to 10:00 PM daily."
     ],
     "real_estate": [
         "Orchard Heights by Skyline Developers offers premium 2 BHK and 3 BHK luxury apartments starting at 80 Lakhs.",
@@ -225,9 +240,13 @@ class RAGService:
             except Exception as e:
                 logger.error(f"Failed to query ChromaDB, falling back to keyword search: {e}")
 
-        # Fallback to keyword-based search
-        query_words = set(re.findall(r'\w+', query.lower()))
-        if not query_words:
+        # Fallback to keyword-based search with stop-word filtering and stem matching
+        STOP_WORDS = {"what", "where", "when", "does", "do", "is", "are", "in", "the", "a", "an", "at", "for", "of", "to", "you", "have", "i", "can", "it", "this", "that", "there", "if", "or", "and", "happens", "on", "by", "with", "from", "my", "your", "our", "any", "some"}
+        raw_query_words = [w for w in re.findall(r'\w+', query.lower()) if w not in STOP_WORDS and len(w) > 1]
+        if not raw_query_words:
+            raw_query_words = re.findall(r'\w+', query.lower())
+
+        if not raw_query_words:
             return []
 
         # Map campaign_id back to campaign key string
@@ -244,13 +263,20 @@ class RAGService:
         scored_results = []
 
         for idx, fact in enumerate(facts):
-            fact_words = set(re.findall(r'\w+', fact.lower()))
-            overlap = len(query_words.intersection(fact_words))
-            if overlap > 0:
-                score = overlap / len(query_words.union(fact_words))
+            fact_lower = fact.lower()
+            fact_words = set(re.findall(r'\w+', fact_lower))
+            match_score = 0.0
+            
+            for qw in raw_query_words:
+                if qw in fact_words:
+                    match_score += 2.0
+                elif any((qw[:5] in fw or fw[:5] in qw) for fw in fact_words if len(fw) >= 5 and len(qw) >= 5):
+                    match_score += 1.5
+
+            if match_score > 0:
                 scored_results.append({
                     "text": fact,
-                    "score": score,
+                    "score": match_score / (len(raw_query_words) * 2.0),
                     "filename": campaign_key,
                     "chunk_index": idx
                 })

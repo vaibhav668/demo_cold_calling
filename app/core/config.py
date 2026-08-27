@@ -49,41 +49,58 @@ class Settings(BaseSettings):
 
     # AI
     OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
     GROQ_API_KEY: Optional[str] = None
-    OPENROUTER_API_KEY: Optional[str] = None
-    LLM_PROVIDER: str = "qwen"
-    FALLBACK_LLM_PROVIDER: str = "openrouter"
-    LLM_MODEL: str = "qwen3-instruct"
+    LLM_PROVIDER: str = "gemini"
+    FALLBACK_LLM_PROVIDER: str = "groq"
+    LLM_MODEL: str = "gemini-3.5-flash"
 
     # Speech AI providers
     STT_PROVIDER: str = "faster_whisper"
     WHISPER_MODEL: str = "large-v3-turbo"
     VAD_PROVIDER: str = "silero"
-    TTS_PROVIDER: str = "kokoro"
+    TTS_PROVIDER: str = "svara"
     EMBEDDING_PROVIDER: str = "bge_m3"
     EMBEDDING_MODEL: str = "BAAI/bge-m3"
 
-    # Kokoro TTS specifics
-    KOKORO_MODEL_DIR: str = "./models/kokoro"
-    KOKORO_DEFAULT_SPEED: float = 1.15
+    # Svara TTS specifics
+    SVARA_MODEL_PATH: str = "./models/svara/svara-tts-v1.Q4_K_M.gguf"
+    SVARA_THREADS: int = 4
+    SVARA_CONTEXT_SIZE: int = 2048
+    SVARA_DEFAULT_SPEED: float = 1.0
     
-    # Kokoro Voice Mapping defaults (can be overridden via env vars)
+    # Svara Female Voice Mapping (centralized female-only mapping)
+    SVARA_VOICE_SOPHIA_EN: str = "svara_en_female_sophia"
+    SVARA_VOICE_SOPHIA_HI: str = "svara_hi_female_sophia"
+    SVARA_VOICE_SOPHIA_TE: str = "svara_te_female_sophia"
+
+    SVARA_VOICE_MAYA_EN: str = "svara_en_female_maya"
+    SVARA_VOICE_MAYA_HI: str = "svara_hi_female_maya"
+    SVARA_VOICE_MAYA_TE: str = "svara_te_female_maya"
+
+    SVARA_VOICE_EMMA_EN: str = "svara_en_female_emma"
+    SVARA_VOICE_EMMA_HI: str = "svara_hi_female_emma"
+    SVARA_VOICE_EMMA_TE: str = "svara_te_female_emma"
+
+    SVARA_VOICE_ANANYA_EN: str = "svara_en_female_ananya"
+    SVARA_VOICE_ANANYA_HI: str = "svara_hi_female_ananya"
+    SVARA_VOICE_ANANYA_TE: str = "svara_te_female_ananya"
+
+    # Legacy Kokoro settings retained for fallback compatibility
+    KOKORO_MODEL_DIR: str = "./models/kokoro"
+    KOKORO_DEFAULT_SPEED: float = 1.05
     KOKORO_VOICE_SOPHIA_EN: str = "af_nicole"
     KOKORO_VOICE_SOPHIA_HI: str = "hf_alpha"
     KOKORO_VOICE_SOPHIA_TE: str = "af_nicole"
-
     KOKORO_VOICE_MAYA_EN: str = "af_sky"
     KOKORO_VOICE_MAYA_HI: str = "hf_beta"
     KOKORO_VOICE_MAYA_TE: str = "af_sky"
-
     KOKORO_VOICE_ANANYA_EN: str = "af_bella"
     KOKORO_VOICE_ANANYA_HI: str = "hf_alpha"
     KOKORO_VOICE_ANANYA_TE: str = "af_bella"
-
-    KOKORO_VOICE_ARJUN_EN: str = "am_echo"
+    KOKORO_VOICE_ARJUN_EN: str = "am_michael"
     KOKORO_VOICE_ARJUN_HI: str = "hm_omega"
-    KOKORO_VOICE_ARJUN_TE: str = "am_echo"
-
+    KOKORO_VOICE_ARJUN_TE: str = "am_michael"
     KOKORO_VOICE_DAVID_EN: str = "am_adam"
     KOKORO_VOICE_DAVID_HI: str = "hm_psi"
     KOKORO_VOICE_DAVID_TE: str = "am_adam"
