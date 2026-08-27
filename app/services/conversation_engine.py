@@ -595,6 +595,88 @@ def validate_tts_speech(text: str) -> bool:
     return True
 
 
+HOSPITAL_KNOWLEDGE_TOPICS = [
+    {
+        "keywords": ["parking", "park", "car", "vehicle", "garage", "पार्किंग", "गाड़ी", "పార్కింగ్"],
+        "answers": {
+            "en": "Parking at CityCare Hospital is completely free for patients and visitors in our adjacent multi-story parking garage.",
+            "hi": "सिटीकेयर हॉस्पिटल में सभी मरीजों और आगंतुकों के लिए मल्टी-स्टोरी पार्किंग गैरेज में पार्किंग पूरी तरह से मुफ्त है।",
+            "te": "సిటీకేర్ హాస్పిటల్‌లో రోగులు మరియు సందర్శకులందరికీ మా మల్టీ-స్టోరీ పార్కింగ్ గ్యారేజీలో పార్కింగ్ పూర్తిగా ఉచితం."
+        }
+    },
+    {
+        "keywords": ["location", "located", "where", "address", "landmark", "directions", "reach", "metro", "कहाँ", "पता", "लोकेशन", "ఎక్కడ", "చిరునామా", "లొకేషన్"],
+        "answers": {
+            "en": "CityCare Hospital is located at 123 Health Ave, Suite 100, City Center, Mumbai, right near Central Park Metro Station.",
+            "hi": "सिटीकेयर हॉस्पिटल 123 हेल्थ एवेन्यू, सिटी सेंटर, मुंबई में सेंट्रल पार्क मेट्रो स्टेशन के पास स्थित है।",
+            "te": "సిటీకేర్ హాస్పిటల్ ముంబైలోని సిటీ సెంటర్, 123 హెల్త్ అవెన్యూ వద్ద సెంట్రల్ పార్క్ మెట్రో స్టేషన్ సమీపంలో ఉంది."
+        }
+    },
+    {
+        "keywords": ["timing", "timings", "hours", "open", "close", "working hours", "opd", "समय", "खुलने", "సమయం", "వేళలు"],
+        "answers": {
+            "en": "Our OPD working hours are from 8:00 AM to 8:00 PM daily, and our Emergency Room and ICU operate 24/7.",
+            "hi": "हमारा ओपीडी रोजाना सुबह 8:00 बजे से रात 8:00 बजे तक खुला रहता है, और इमरजेंसी सेवा 24/7 खुली है।",
+            "te": "మా OPD ప్రతిరోజూ ఉదయం 8:00 నుండి రాత్రి 8:00 వరకు తెరిచి ఉంటుంది, మరియు ఎమర్జెన్సీ 24/7 అందుబాటులో ఉంటుంది."
+        }
+    },
+    {
+        "keywords": ["fee", "fees", "cost", "charge", "charges", "price", "consultation", "फीस", "खर्चा", "शुल्क", "ఫీజు", "ఖర్చు"],
+        "answers": {
+            "en": "Consultation fee for Dr. Sharma is ₹800, Dr. Patel is ₹1000, and general OPD consultation is ₹500.",
+            "hi": "डॉ. शर्मा की कंसल्टेशन फीस ₹800, डॉ. पटेल की ₹1000 और सामान्य ओपीडी फीस ₹500 है।",
+            "te": "డాక్టర్ శర్మ కన్సల్టేషన్ ఫీజు ₹800, డాక్టర్ పటేల్ ఫీజు ₹1000 మరియు జనరల్ OPD ఫీజు ₹500."
+        }
+    },
+    {
+        "keywords": ["insurance", "cashless", "tpa", "claim", "mediclaim", "star health", "hdfc ergo", "icici lombard", "max bupa", "बीमा", "इन्श्योरेंस", "ఇన్సూరెన్స్"],
+        "answers": {
+            "en": "We support cashless insurance with major providers including Star Health, HDFC ERGO, ICICI Lombard, Max Bupa, Care Health, and Bajaj Allianz.",
+            "hi": "हम स्टार हेल्थ, एचडीएफसी एर्गो, आईसीआईसीआई लोम्बार्ड, मैक्स बूपा और बजाज आलियांज सहित प्रमुख बीमा कंपनियों के लिए कैशलेस सुविधा प्रदान करते हैं।",
+            "te": "మేము స్టార్ హెల్త్, HDFC ERGO, ICICI లాంబార్డ్ మరియు మ్యాక్స్ బూపాతో సహా ప్రధాన బీమా కంపెనీలకు క్యాష్‌లెస్ సౌకర్యాన్ని అందిస్తాము."
+        }
+    },
+    {
+        "keywords": ["emergency", "ambulance", "icu", "urgent", "casualty", "इमरजेंसी", "एंबुलेंस", "ఎమర్జెన్సీ", "అంబులెన్స్"],
+        "answers": {
+            "en": "CityCare Hospital has a 24/7 Emergency Room, ICU, and dedicated 24/7 ambulance support reachable at +91 22 5550 9999.",
+            "hi": "सिटीकेयर हॉस्पिटल में 24/7 इमरजेंसी रूम, आईसीयू और 24/7 एम्बुलेंस सेवा (+91 22 5550 9999) उपलब्ध है।",
+            "te": "సిటీకేర్ హాస్పిటల్‌లో 24/7 ఎమర్జెన్సీ రూమ్, ICU మరియు 24/7 అంబులెన్స్ సదుపాయం (+91 22 5550 9999) అందుబాటులో ఉన్నాయి."
+        }
+    },
+    {
+        "keywords": ["pharmacy", "medicine", "medicines", "medical shop", "chemist", "दवा", "दवाई", "दुकान", "మందులు", "ఫార్మసీ"],
+        "answers": {
+            "en": "Our in-house 24/7 pharmacy is located on the ground floor with valid prescription, and home delivery is available.",
+            "hi": "हमारी 24/7 फार्मेसी ग्राउंड फ्लोर पर स्थित है और दवाओं की होम डिलीवरी भी उपलब्ध है।",
+            "te": "మా 24/7 ఫార్మసీ గ్రౌండ్ ఫ్లోర్‌లో ఉంది మరియు హోమ్ డెలివరీ కూడా అందుబాటులో ఉంది."
+        }
+    },
+    {
+        "keywords": ["lab", "test", "blood test", "ecg", "diagnostic", "xray", "scan", "sample", "सैंपल", "जांच", "टेस्ट", "ల్యాబ్", "పరీక్షలు"],
+        "answers": {
+            "en": "Our in-house diagnostic laboratory operates from 7:00 AM to 9:00 PM daily with home sample collection available.",
+            "hi": "हमारी डायग्नोस्टिक लैब रोजाना सुबह 7:00 बजे से रात 9:00 बजे तक खुली रहती है और होम सैंपल कलेक्शन उपलब्ध है।",
+            "te": "మా డయాగ్నస్టిక్ ల్యాబ్ ప్రతిరోజూ ఉదయం 7:00 నుండి రాత్రి 9:00 వరకు పనిచేస్తుంది మరియు హోమ్ శాంపిల్ కలెక్షన్ అందుబాటులో ఉంది."
+        }
+    },
+    {
+        "keywords": ["canteen", "food", "cafeteria", "coffee", "tea", "meals", "breakfast", "lunch", "कैंटीन", "खाना", "కాంటీన్", "ఆహారం"],
+        "answers": {
+            "en": "Our hospital cafeteria is located on the ground floor, open daily from 7:00 AM to 10:00 PM.",
+            "hi": "हमारा हॉस्पिटल कैफेटेरिया ग्राउंड फ्लोर पर स्थित है, जो सुबह 7:00 से रात 10:00 बजे तक खुला रहता है।",
+            "te": "మా హాస్పిటల్ కెఫెటేరియా గ్రౌండ్ ఫ్లోర్‌లో ఉంది, ప్రతిరోజూ ఉదయం 7:00 నుండి రాత్రి 10:00 వరకు తెరిచి ఉంటుంది."
+        }
+    },
+    {
+        "keywords": ["cancel", "cancellation", "cancellation fee", "charges for cancel", "refund", "कैंसिल", "रद्द", "రద్దు"],
+        "answers": {
+            "en": "Appointments can be rescheduled or cancelled at least 24 hours in advance without any fee or cancellation charges.",
+            "hi": "अपॉइंटमेंट को बिना किसी शुल्क के 24 घंटे पहले तक कैंसिल या रीशेड्यूल किया जा सकता है।",
+            "te": "ఎలాంటి రుసుము లేకుండా అపాయింట్‌మెంట్‌ను 24 గంటల ముందు వరకు రద్దు చేసుకోవచ్చు లేదా రీషెడ్యూల్ చేయవచ్చు."
+        }
+    }
+]
 
 
 def get_deterministic_fallback(
@@ -798,9 +880,11 @@ def is_other_doctors_query(text: str) -> bool:
 
 
 def resolve_hospital_direct_knowledge(user_text: str, lang_key: str) -> str | None:
-    """Resolve direct hospital queries (doctor name, appointment time, other doctors) directly without RAG."""
+    """Resolve direct hospital queries (doctor name, appointment time, parking, fees, location, etc.) directly without RAG."""
     if not user_text:
         return None
+    t_low = user_text.lower().strip()
+    
     if is_appointment_time_query(user_text):
         return {
             "en": "Your appointment with Dr. Sharma is scheduled for tomorrow at 11:00 AM.",
@@ -819,6 +903,11 @@ def resolve_hospital_direct_knowledge(user_text: str, lang_key: str) -> str | No
             "hi": "आपका अपॉइंटमेंट सिटीकेयर हॉस्पिटल के वरिष्ठ कार्डियोलॉजिस्ट और हृदय रोग विशेषज्ञ डॉ. शर्मा के साथ है।",
             "te": "మీ అపాయింట్‌మెంట్ సిటీకేర్ హాస్పిటల్‌లోని సీనియర్ కార్డియాలజిస్ట్ మరియు హృద్రోగ నిపుణుడు డాక్టర్ శర్మగారితో ఉంది."
         }.get(lang_key)
+
+    for topic in HOSPITAL_KNOWLEDGE_TOPICS:
+        if any(re.search(r'\b' + re.escape(k) + r'\b', t_low) for k in topic["keywords"]):
+            return topic["answers"].get(lang_key, topic["answers"]["en"])
+
     return None
 
 

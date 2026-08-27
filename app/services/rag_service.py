@@ -241,7 +241,12 @@ class RAGService:
                 logger.error(f"Failed to query ChromaDB, falling back to keyword search: {e}")
 
         # Fallback to keyword-based search with stop-word filtering and stem matching
-        STOP_WORDS = {"what", "where", "when", "does", "do", "is", "are", "in", "the", "a", "an", "at", "for", "of", "to", "you", "have", "i", "can", "it", "this", "that", "there", "if", "or", "and", "happens", "on", "by", "with", "from", "my", "your", "our", "any", "some"}
+        STOP_WORDS = {
+            "what", "where", "when", "does", "do", "is", "are", "in", "the", "a", "an", "at", "for", "of",
+            "to", "you", "have", "i", "can", "it", "this", "that", "there", "if", "or", "and", "happens",
+            "on", "by", "with", "from", "my", "your", "our", "any", "some", "available", "availability",
+            "here", "there", "tell", "know", "please", "like", "want", "need", "get", "give"
+        }
         raw_query_words = [w for w in re.findall(r'\w+', query.lower()) if w not in STOP_WORDS and len(w) > 1]
         if not raw_query_words:
             raw_query_words = re.findall(r'\w+', query.lower())
@@ -257,7 +262,12 @@ class RAGService:
                 break
 
         if not campaign_key:
-            return []
+            # Fallback based on query content or default to hospital
+            q_low = query.lower()
+            if any(w in q_low for w in ["bhk", "flat", "apartment", "real estate", "property", "gachibowli", "skyline"]):
+                campaign_key = "real_estate"
+            else:
+                campaign_key = "hospital"
 
         facts = DEMO_FACTS.get(campaign_key, [])
         scored_results = []
