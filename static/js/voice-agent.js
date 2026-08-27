@@ -921,9 +921,9 @@ function playPcmAudio(arrayBuffer) {
     }
 
     // Continuous gapless scheduling:
-    // If starting fresh or recovering from pause, use a safe 35ms initial lookahead for hardware synchronization
-    if (nextPlayTime < now + 0.035) {
-        nextPlayTime = now + 0.035;
+    // If starting fresh or recovering from pause, use a safe 45ms initial lookahead for hardware synchronization
+    if (nextPlayTime < now + 0.045) {
+        nextPlayTime = now + 0.045;
     }
     src.start(nextPlayTime);
     nextPlayTime += buf.duration;

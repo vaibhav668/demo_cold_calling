@@ -61,10 +61,10 @@ _NEURAL_VOICE_MAP = {
 }
 
 
-def trim_pcm_digital_silence(pcm_bytes: bytes, sample_rate: int = 24000, threshold: int = 250, pad_ms: int = 10) -> Tuple[bytes, float, float]:
+def trim_pcm_digital_silence(pcm_bytes: bytes, sample_rate: int = 24000, threshold: int = 100, pad_ms: int = 50) -> Tuple[bytes, float, float]:
     """
     Trims digital near-zero silence from start and end of 16-bit mono PCM buffer.
-    Leaves pad_ms (10ms) of subtle natural padding to prevent abrupt speech clipping.
+    Leaves pad_ms (50ms) of natural padding to prevent abrupt speech clipping on mobile devices & hardware DACs.
     Returns (trimmed_bytes, leading_silence_ms, trailing_silence_ms).
     """
     if not pcm_bytes or len(pcm_bytes) < 4:
