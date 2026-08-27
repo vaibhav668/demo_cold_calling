@@ -504,30 +504,19 @@ def extract_customer_name_from_text(text: str, language: str = "en") -> Optional
     
     INVALID_WORDS = {
         "unknown", "none", "null", "undefined", "n/a", "user", "customer", 
-        "my gosh", "in the car", "my car", "gosh", "yes", "no", "hello", "hi", "ok", "okay",
-        "go", "let's", "lets", "let", "come", "start", "see", "look", "show", "tell", "give", "speak", "speaking", "talk", "hear", "listen",
-        "sophia", "maya", "ananya", "arjun", "david", "sharma", "sharma's", "please", "today", "tomorrow",
-        "mera", "meri", "mere", "naam", "name", "hai", "hoon", "hu", "haan", "nahi",
-        "appointment", "reschedule", "confirm", "cancel", "hospital", "doctor",
-        "i", "i'm", "my", "this", "it's", "it", "myself", "am", "called", "here", "hey",
-        "a", "an", "the", "and", "or", "is", "are", "me", "we", "you", "he", "she", "they",
-        "మీరు", "నా", "పేరు", "నమస్కారం", "అవును", "సరే", "ధన్యవాదాలు", "మాట్లాడుతున్నాను", "నేను",
+        "my gosh", "in the car", "my car", "gosh", "yes", "no", "hello", "hi", "ok", "okay", "yep", "yeah", "sure",
+        "go", "let's", "lets", "let", "come", "start", "see", "look", "show", "tell", "give", "speak", "speaking", "talk", "hear", "listen", "calling",
+        "please", "today", "tomorrow", "yesterday", "appointment", "reschedule", "confirm", "cancel", "hospital", "doctor", "receptionist",
+        "mera", "meri", "mere", "naam", "name", "hai", "hoon", "hu", "haan", "nahi", "bol", "raha", "rahi", "rahe", "baat", "kar", "kare", "ji", "ka", "ke", "ki", "ko", "se",
+        "i", "i'm", "im", "my", "this", "it's", "it", "myself", "am", "called", "here", "hey", "from",
+        "a", "an", "the", "and", "or", "is", "are", "me", "we", "you", "he", "she", "they", "sir", "madam", "maam", "mr", "mrs", "ms", "dr",
+        "మీరు", "నా", "పేరు", "నమస్కారం", "అవును", "సరే", "ధన్యవాదాలు", "మాట్లాడుతున్నాను", "మాట్లాడుతున్నా", "నేను",
         "మరియు", "లేదా", "ఉంది", "ఉన్నారు"
     }
 
-    words_in_text = re.findall(r"[A-Za-z\u0900-\u097F\u0C00-\u0C7F]+", raw)
-    
-    candidate_words = []
-    for w in words_in_text:
-        w_clean = w.strip().rstrip(".,!?।")
-        if w_clean.lower() not in INVALID_WORDS and len(w_clean) >= 2:
-            candidate_words.append(w_clean)
-            
-    if len(set(w.lower() for w in candidate_words)) > 2:
-        logger.warning(f"[NAME-EXTRACTION] Rejected: Multiple distinct name candidates found {set(candidate_words)}")
-        return None
-
     def clean_name(name_str: str) -> Optional[str]:
+        if not name_str:
+            return None
         words = name_str.strip().split()
         cleaned_words = []
         for w in words:
@@ -535,13 +524,13 @@ def extract_customer_name_from_text(text: str, language: str = "en") -> Optional
             if w_clean.lower() not in INVALID_WORDS and len(w_clean) >= 2:
                 cleaned_words.append(w_clean)
         if cleaned_words:
-            return " ".join(w.title() for w in cleaned_words[:2])
+            return " ".join(w.title() for w in cleaned_words[:3])
         return None
 
-    # Regex patterns
+    # 1. Regex patterns for English
     en_patterns = [
-        r"\b(?:my name is|i'm|i am|this is|myself|call me)\s+([A-Za-z\s]+)",
-        r"\b([A-Za-z\s]+)\s+(?:speaking|here|this side)",
+        r"\b(?:my name is|i am|i\'m|im|this is|myself|call me|you can call me)\s+([A-Za-z\s]+)",
+        r"\b([A-Za-z\s]+)\s+(?:speaking|here|this side|calling)",
         r"\b(?:mera name|mera naam|main|naam|naam hai)\s+([A-Za-z\s]+)"
     ]
     
@@ -552,9 +541,10 @@ def extract_customer_name_from_text(text: str, language: str = "en") -> Optional
             if cand:
                 return cand
 
+    # 2. Regex patterns for Hindi
     hi_patterns = [
-        r"(?:मेरा नाम|नाम)\s+([\u0900-\u097F\sA-Za-z]+)",
-        r"(?:मैं|मै)\s+([\u0900-\u097F\sA-Za-z]+)\s+(?:बोल\s+रहा|बोल\s+रही|बात\s+कर)",
+        r"(?:मेरा नाम|नाम|मेरा नाम है)\s+([\u0900-\u097F\sA-Za-z]+)",
+        r"(?:मैं|मै|हम)\s+([\u0900-\u097F\sA-Za-z]+)\s+(?:बोल\s+रहा|बोल\s+रही|बात\s+कर|बोल\s+रहे)",
         r"([\u0900-\u097F\sA-Za-z]+)\s+(?:बोल\s+रहा|बोल\s+रही|बात\s+कर|बोलता|बोलती)"
     ]
     for pat in hi_patterns:
@@ -567,10 +557,11 @@ def extract_customer_name_from_text(text: str, language: str = "en") -> Optional
             if cand:
                 return cand
 
+    # 3. Regex patterns for Telugu
     te_patterns = [
         r"(?:నా పేరు|పేరు)\s+([\u0C00-\u0C7F\sA-Za-z]+)",
-        r"(?:నేను)\s+([\u0C00-\u0C7F\sA-Za-z]+)\s+(?:మాట్లాడుతున్నాను)",
-        r"([\u0C00-\u0C7F\sA-Za-z]+)\s+(?:మాట్లాడుతున్నాను)"
+        r"(?:నేను)\s+([\u0C00-\u0C7F\sA-Za-z]+)\s+(?:మాట్లాడుతున్నాను|మాట్లాడుతున్నా)",
+        r"([\u0C00-\u0C7F\sA-Za-z]+)\s+(?:మాట్లాడుతున్నాను|మాట్లాడుతున్నా)"
     ]
     for pat in te_patterns:
         match = re.search(pat, raw)
@@ -582,9 +573,9 @@ def extract_customer_name_from_text(text: str, language: str = "en") -> Optional
             if cand:
                 return cand
 
-    # Single or double word fallback
+    # 4. Fallback for single, double, or triple word name inputs
     words = raw.split()
-    if 1 <= len(words) <= 2:
+    if 1 <= len(words) <= 3:
         cleaned = clean_name(raw)
         if cleaned:
             if re.search(r'[A-Za-z\u0900-\u097F\u0C00-\u0C7F]', cleaned):
