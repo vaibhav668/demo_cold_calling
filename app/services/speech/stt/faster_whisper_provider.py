@@ -217,9 +217,12 @@ class FasterWhisperProvider(SpeechToTextProvider):
 
                 def load_model():
                     if os.name != "nt":
-                        cache_dir = os.environ.get("HF_HOME", "/app/models/hf_cache")
-                        os.makedirs(cache_dir, exist_ok=True)
-                        download_root = cache_dir
+                        cache_dir = os.environ.get("HF_HOME", os.path.join(os.getcwd(), "models", "hf_cache"))
+                        try:
+                            os.makedirs(cache_dir, exist_ok=True)
+                        except Exception:
+                            pass
+                        download_root = cache_dir if os.path.exists(cache_dir) else None
                     else:
                         download_root = None
 
