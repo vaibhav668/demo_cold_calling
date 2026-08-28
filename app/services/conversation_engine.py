@@ -493,7 +493,7 @@ def normalize_name_transcript(text: str) -> str:
 
 
 def extract_bhk_choice(text: str, lang_key: str = "en") -> str:
-    """Extracts and formats BHK / Penthouse choice from customer text."""
+    """Extracts and formats BHK / Penthouse choice from customer text, including ordinals and numbers."""
     if not text:
         return {
             "en": "premium 2 BHK apartment",
@@ -501,25 +501,40 @@ def extract_bhk_choice(text: str, lang_key: str = "en") -> str:
             "te": "ప్రీమియం 2 BHK అపార్ట్‌మెంట్"
         }.get(lang_key, "premium 2 BHK apartment")
         
-    t_low = text.lower()
-    if any(p in t_low for p in ["penthouse", "duplex", "पेंटहाउस", "పెంట్‌హౌస్", "2.5", "2.5 crore", "2.5cr"]):
+    t_low = text.lower().strip()
+    
+    # Check Penthouse / 3rd option
+    penthouse_terms = [
+        "penthouse", "pantos", "pent house", "pent-house", "pant house", "panthouse", "paint house",
+        "duplex", "third", "3rd", "option 3", "option three", "third option", "last one", "last option",
+        "2.5", "2.5 crore", "2.5cr", "2.5 cr", "पेंटहाउस", "పెంట్‌హౌస్"
+    ]
+    if any(p in t_low for p in penthouse_terms):
         return {
             "en": "luxury duplex Penthouse",
             "hi": "लक्जरी डुप्लेक्स पेंटहाउस",
             "te": "లగ్జరీ డ్యూప్లెక్స్ పెంట్‌హౌస్"
         }.get(lang_key, "luxury duplex Penthouse")
-    elif any(p in t_low for p in ["3 bhk", "three bhk", "3bhk", "1.2", "1.2 crore", "1.2cr", "3"]):
+        
+    # Check 3 BHK / 2nd option
+    three_bhk_terms = [
+        "3 bhk", "three bhk", "3bhk", "3 bh", "3bsk", "3 bsk", "second", "2nd",
+        "option 2", "option two", "second option", "second one", "1.2", "1.2 crore", "1.2cr", "1.2 cr",
+        "3 बीएचके", "3"
+    ]
+    if any(p in t_low for p in three_bhk_terms):
         return {
             "en": "premium 3 BHK apartment",
             "hi": "प्रीमियम 3 BHK फ्लैट",
             "te": "ప్రీమియం 3 BHK అపార్ట్‌మెంట్"
         }.get(lang_key, "premium 3 BHK apartment")
-    else:
-        return {
-            "en": "premium 2 BHK apartment",
-            "hi": "प्रीमियम 2 BHK फ्लैट",
-            "te": "ప్రీమియం 2 BHK అపార్ట్‌మెంట్"
-        }.get(lang_key, "premium 2 BHK apartment")
+        
+    # Default / 2 BHK / 1st option
+    return {
+        "en": "premium 2 BHK apartment",
+        "hi": "प्रीमियम 2 BHK फ्लैट",
+        "te": "ప్రీమియం 2 BHK అపార్ట్‌మెంట్"
+    }.get(lang_key, "premium 2 BHK apartment")
 
 
 def clean_reschedule_slot(text: str) -> Optional[str]:
@@ -1041,29 +1056,66 @@ def resolve_hospital_direct_knowledge(user_text: str, lang_key: str) -> str | No
 
 
 def is_real_estate_knowledge_query(text: str) -> bool:
-    """Detect if user is asking a real estate knowledge query (price, location, amenities, loan, possession, etc.)."""
+    """Detect if user is asking a real estate knowledge query (details, price, location, amenities, loan, possession, etc.)."""
     if not text:
         return False
     t_low = text.lower().strip()
     patterns = [
+        "detail", "details", "more detail", "more details", "tell me more", "tell me about", "about the", "know more",
+        "feature", "features", "spec", "specs", "specification", "specifications", "info", "information",
         "price", "cost", "how much", "rate", "budget", "pricing",
         "location", "where", "located", "address", "gachibowli", "landmark", "distance", "connectivity", "metro", "airport", "how far",
         "amenities", "facility", "facilities", "pool", "gym", "clubhouse", "parking", "security", "backup",
         "possession", "ready to move", "when will it", "completion", "handover",
-        "loan", "bank", "finance", "emi", "interest",
+        "loan", "bank", "finance", "emi", "interest rate", "loan interest", "roi",
         "rera", "approved", "approval", "builder", "skyline", "project", "developer", "developers", "legal",
         "sample flat", "model flat", "floor plan", "sqft", "square feet", "area", "size",
-        "कीमत", "दाम", "कहाँ", "लोकेशन", "सुविधाएं", "कब्जा", "लोन", "बिल्डर", "रेरा",
-        "ధర", "ఎక్కడ", "లొకేషన్", "సౌకర్యాలు", "పొసెషన్", "లోన్", "బిల్డర్"
+        "जानकारी", "डिटेल", "डिटेल्स", "बताइए", "कीमत", "दाम", "कहाँ", "लोकेशन", "सुविधाएं", "कब्जा", "लोन", "बिल्डर", "रेरा",
+        "వివరాలు", "ధర", "ఎక్కడ", "లొకేషన్", "సౌకర్యాలు", "పొసెషన్", "లోన్", "బిల్డర్"
     ]
     return any(p in t_low for p in patterns)
 
 
 def resolve_real_estate_direct_knowledge(user_text: str, lang_key: str) -> str | None:
-    """Resolve direct real estate queries (location, price, amenities, possession, loan, rera, builder) directly."""
+    """Resolve direct real estate queries (specific unit details, location, price, amenities, possession, loan, rera, builder) directly."""
     if not user_text:
         return None
     t_low = user_text.lower().strip()
+
+    # Penthouse specific details query
+    if any(p in t_low for p in ["penthouse", "pantos", "pent house", "duplex", "पेंटहाउस", "పెంట్‌హౌస్"]):
+        if any(d in t_low for d in ["detail", "details", "tell me", "about", "feature", "features", "spec", "know", "जानकारी", "వివరాలు", "what"]):
+            return {
+                "en": "Our luxury duplex Penthouse is 3,800 sq ft across the top floors, featuring a private terrace garden, double-height living room, panoramic city views, Italian marble flooring, and smart home automation, priced at 2.5 Crores.",
+                "hi": "हमारा लक्जरी डुप्लेक्स पेंटहाउस 3,800 वर्ग फुट का है, जिसमें प्राइवेट टेरेस गार्डन, डबल-हाइट लिविंग रूम, इटैलियन मार्बल और स्मार्ट होम फीचर्स हैं, और इसकी कीमत 2.5 करोड़ रुपये है।",
+                "te": "మా లగ్జరీ డ్యూప్లెక్స్ పెంట్‌హౌస్ 3,800 చదరపు అడుగులు, ప్రైవేట్ టెర్రస్ గార్డెన్, పనోరమిక్ వ్యూస్ మరియు స్మార్ట్ హోమ్ ఫీచర్లతో 2.5 కోట్లకు అందుబాటులో ఉంది."
+            }.get(lang_key)
+
+    # 3 BHK specific details query
+    if any(p in t_low for p in ["3 bhk", "3bhk", "three bhk", "3bsk", "3 बीएचके"]):
+        if any(d in t_low for d in ["detail", "details", "tell me", "about", "feature", "features", "spec", "know", "जानकारी", "వివరాలు", "what"]):
+            return {
+                "en": "Our premium 3 BHK apartments range from 1,850 to 2,200 sq ft, featuring 3 spacious bedrooms with attached baths, wide balconies, modular kitchen, and 2 dedicated car parkings, starting at 1.2 Crores.",
+                "hi": "हमारे 3 BHK फ्लैट्स 1,850 से 2,200 वर्ग फुट के हैं, जिनमें 3 बड़े बेडरूम, मॉड्युलर किचन, बड़ी बालकनी और 2 कार पार्किंग शामिल हैं, जिसकी कीमत 1.2 करोड़ रुपये से शुरू है।",
+                "te": "మా ప్రీమియం 3 BHK అపార్ట్‌మెంట్లు 1,850 నుండి 2,200 చదరపు అడుగులు, విశాలమైన బెడ్‌రూమ్‌లు, మాడ్యులర్ కిచెన్ మరియు 2 కార్ పార్కింగ్‌తో 1.2 కోట్ల నుండి ప్రారంభమవుతాయి."
+            }.get(lang_key)
+
+    # 2 BHK specific details query
+    if any(p in t_low for p in ["2 bhk", "2bhk", "two bhk", "2bsk", "2 बीएचके"]):
+        if any(d in t_low for d in ["detail", "details", "tell me", "about", "feature", "features", "spec", "know", "जानकारी", "వివరాలు", "what"]):
+            return {
+                "en": "Our 2 BHK apartments are 1,250 sq ft with an efficient vastu-compliant layout, premium fittings, spacious living area, and abundant natural ventilation, starting at 80 Lakhs.",
+                "hi": "हमारे 2 BHK फ्लैट्स 1,250 वर्ग फुट के वास्तु-अनुकूल लेआउट के साथ आते हैं, जिनमें प्रीमियम फिटिंग्स और खुला लिविंग एरिया है, जिसकी कीमत 80 लाख रुपये से शुरू है।",
+                "te": "మా 2 BHK అపార్ట్‌మెంట్లు 1,250 చదరపు అడుగుల వాస్తు లేఅవుట్, ప్రీమియం ఫిట్టింగ్స్‌తో 80 లక్షల నుండి ప్రారంభమవుతాయి."
+            }.get(lang_key)
+
+    # General details query
+    if any(p in t_low for p in ["tell me the details", "tell me more details", "tell me details", "more details", "what are the details", "all details", "सारी जानकारी", "మొత్తం వివరాలు"]):
+        return {
+            "en": "Skyline Residency in Gachibowli offers premium 2 & 3 BHK apartments and duplex penthouses with 80% open green space, a 20,000 sq ft clubhouse, 24/7 security, and handovers starting December 2026.",
+            "hi": "गचीबोवली में Skyline Residency में 2 & 3 BHK और डुप्लेक्स पेंटहाउस उपलब्ध हैं, जिसमें 80% खुला ग्रीन एरिया, 20,000 वर्ग फुट का क्लबहाउस और दिसंबर 2026 से पजेशन शामिल है।",
+            "te": "గచ్చిబౌలిలోని Skyline Residency లో 80% ఓపెన్ స్పేస్, 20,000 చదరపు అడుగుల క్లబ్‌హౌస్ మరియు డిసెంబర్ 2026 నుండి హ్యాండోవర్‌తో 2 & 3 BHK మరియు పెంట్‌హౌస్‌లు ఉన్నాయి."
+        }.get(lang_key)
 
     # Location & Connectivity query
     if any(p in t_low for p in ["location", "where", "located", "address", "gachibowli", "metro", "airport", "distance", "connectivity", "how far", "लोकेशन", "कहाँ", "दूरी", "ఎక్కడ", "లొకేషన్", "దూరం"]):
@@ -1098,7 +1150,7 @@ def resolve_real_estate_direct_knowledge(user_text: str, lang_key: str) -> str |
         }.get(lang_key)
 
     # Loan query
-    if any(p in t_low for p in ["loan", "bank", "finance", "emi", "interest", "लोन", "लोन सुविधा", "లోన్"]):
+    if any(p in t_low for p in ["loan", "bank", "finance", "emi", "interest rate", "लोन", "लोन सुविधा", "లోన్"]):
         return {
             "en": "We have pre-approved home loan partnerships with SBI, HDFC, ICICI, and Axis Bank with competitive interest rates and easy EMI options.",
             "hi": "हमारे पास एसबीआई, एचडीएफसी, आईसीआईसीआई और एक्सिस बैंक के साथ प्री-अप्रूव्ड होम लोन और आसान ईएमआई सुविधाएं उपलब्ध हैं।",
@@ -1668,13 +1720,17 @@ async def _process_voice_demo_turn_stream_impl(
             allowed_intents = ["CONFIRM_SITE_VISIT", "DECLINE_SITE_VISIT", "KNOWLEDGE_QUERY", "SELECT_BHK", "UNKNOWN"]
             t_lower = user_text.lower().strip().rstrip(".,!?।")
             
-            decline_words = ["no", "nope", "not interested", "dont", "don't", "nahi", "na", "nahi chahiye", "वద్దు", "లేదు", "नहीं", "bye", "goodbye"]
-            confirm_words = ["confirm", "yes", "yeah", "yep", "sure", "okay", "ok", "book", "visit", "schedule", "tomorrow", "weekend", "haan", "ha", "हाँ", "అవును", "సరే"]
-            bhk_words = ["2 bhk", "3 bhk", "penthouse", "two bhk", "three bhk", "80 lakh", "1.2 crore", "2.5 crore", "bhk", "duplex", "flat", "apartment", "पेंटहाउस", "फ्लैट", "పెంట్‌హౌస్", "ఫ్లాట్"]
+            # Use regex with word boundaries to avoid false substring matches like "no" in "know"
+            is_decline = bool(re.search(r"\b(no|nope|not interested|dont|don't|nahi|na|nahi chahiye|nah|nahi lena|वద్దు|లేదు|नहीं|bye|goodbye)\b", t_lower))
+            is_confirm = bool(re.search(r"\b(confirm|yes|yeah|yep|sure|okay|ok|haan|ha|हाँ|అవును|సరే|schedule|visit|book|tomorrow|weekend)\b", t_lower))
             
-            is_decline = any(w in t_lower for w in decline_words)
-            is_confirm = any(w in t_lower for w in confirm_words)
-            is_bhk = any(w in t_lower for w in bhk_words)
+            bhk_patterns = [
+                "2 bhk", "3 bhk", "penthouse", "pantos", "two bhk", "three bhk", "80 lakh", "1.2 crore", "2.5 crore",
+                "bhk", "bsk", "3bsk", "2bsk", "duplex", "flat", "apartment", "first one", "second one", "third one",
+                "first option", "second option", "third option", "option 1", "option 2", "option 3",
+                "पेंटहाउस", "फ्लैट", "పెంట్‌హౌస్", "ఫ్లాట్"
+            ]
+            is_bhk = any(w in t_lower for w in bhk_patterns)
             is_knowledge = is_real_estate_knowledge_query(user_text)
             
             pending_prompt = {
@@ -1690,27 +1746,6 @@ async def _process_voice_demo_turn_stream_impl(
                 target_template_name = "RE_SITE_VISIT_DECLINE"
                 next_state = "RE_CALL_ENDED"
                 should_hangup = True
-            elif is_confirm and not is_bhk:
-                logger.info(f"[RE-INTENT] session={call_id} user confirmed site visit.")
-                detected_intent = "CONFIRM_SITE_VISIT"
-                validated_intent = "CONFIRM_SITE_VISIT"
-                requested_tool = "book_site_visit"
-                tool_allowed = validate_tool_call(industry, current_state, validated_intent, requested_tool, slots={"visit": user_text})
-                if tool_allowed:
-                    tool_executed = "book_site_visit"
-                    tool_result = f"Success: Site visit booked for choice: {user_text}."
-                target_template_name = "RE_SITE_VISIT_CONFIRM"
-                next_state = "RE_CALL_ENDED"
-                should_hangup = True
-            elif is_bhk:
-                choice = extract_bhk_choice(user_text, lang_key)
-                logger.info(f"[RE-INTENT] session={call_id} user selected BHK choice='{choice}' (from raw: '{user_text}')")
-                detected_intent = "SELECT_BHK"
-                validated_intent = "SELECT_BHK"
-                collected_info["unit_choice"] = choice
-                await self.session_manager.update_session_metadata(call_id, {"collected_info": collected_info})
-                target_template_name = "RE_RECOMMENDATION"
-                next_state = "RE_SITE_VISIT_OFFER"
             elif is_knowledge:
                 logger.info(f"[RE-KNOWLEDGE] session={call_id} query='{user_text}'")
                 detected_intent = "KNOWLEDGE_QUERY"
@@ -1739,6 +1774,27 @@ async def _process_voice_demo_turn_stream_impl(
                 await self.session_manager.append_message(call_id, bot_turn)
                 await self.session_manager.update_session_state(call_id, current_state)
                 return
+            elif is_bhk:
+                choice = extract_bhk_choice(user_text, lang_key)
+                logger.info(f"[RE-INTENT] session={call_id} user selected BHK choice='{choice}' (from raw: '{user_text}')")
+                detected_intent = "SELECT_BHK"
+                validated_intent = "SELECT_BHK"
+                collected_info["unit_choice"] = choice
+                await self.session_manager.update_session_metadata(call_id, {"collected_info": collected_info})
+                target_template_name = "RE_RECOMMENDATION"
+                next_state = "RE_SITE_VISIT_OFFER"
+            elif is_confirm:
+                logger.info(f"[RE-INTENT] session={call_id} user confirmed site visit.")
+                detected_intent = "CONFIRM_SITE_VISIT"
+                validated_intent = "CONFIRM_SITE_VISIT"
+                requested_tool = "book_site_visit"
+                tool_allowed = validate_tool_call(industry, current_state, validated_intent, requested_tool, slots={"visit": user_text})
+                if tool_allowed:
+                    tool_executed = "book_site_visit"
+                    tool_result = f"Success: Site visit booked for choice: {user_text}."
+                target_template_name = "RE_SITE_VISIT_CONFIRM"
+                next_state = "RE_CALL_ENDED"
+                should_hangup = True
             else:
                 logger.info(f"[RE-INTENT] session={call_id} unclear input='{user_text}', asking for clarification.")
                 detected_intent = "UNKNOWN"
@@ -1771,13 +1827,17 @@ async def _process_voice_demo_turn_stream_impl(
             allowed_intents = ["CONFIRM_SITE_VISIT", "DECLINE_SITE_VISIT", "KNOWLEDGE_QUERY", "SELECT_BHK"]
             t_lower = user_text.lower().strip().rstrip(".,!?।")
             requested_tool = "book_site_visit"
-            confirm_words = ["confirm", "yes", "yeah", "yep", "sure", "okay", "ok", "haan", "ha", "हाँ", "అవును", "visit", "book", "tomorrow", "weekend", "schedule"]
-            decline_words = ["no", "nope", "not interested", "dont", "don't", "nahi", "na", "nahi chahiye", "వద్దు", "లేదు", "नहीं", "bye"]
-            bhk_words = ["2 bhk", "3 bhk", "penthouse", "two bhk", "three bhk", "duplex", "bhk", "पेंटहाउस", "फ्लैट", "పెంట్‌హౌస్", "ఫ్లాట్"]
             
-            is_decline = any(w in t_lower for w in decline_words)
-            is_confirm = any(w in t_lower for w in confirm_words)
-            is_bhk = any(w in t_lower for w in bhk_words)
+            # Use regex with word boundaries to avoid false substring matches
+            is_decline = bool(re.search(r"\b(no|nope|not interested|dont|don't|nahi|na|nahi chahiye|nah|nahi lena|वద్దు|లేదు|नहीं|bye|goodbye)\b", t_lower))
+            is_confirm = bool(re.search(r"\b(confirm|yes|yeah|yep|sure|okay|ok|haan|ha|हाँ|అవును|సరే|visit|book|tomorrow|weekend|schedule)\b", t_lower))
+            
+            bhk_patterns = [
+                "2 bhk", "3 bhk", "penthouse", "pantos", "two bhk", "three bhk", "duplex", "bhk", "bsk", "3bsk", "2bsk",
+                "first one", "second one", "third one", "option 1", "option 2", "option 3",
+                "पेंटहाउस", "फ्लैट", "పెంట్‌హౌస్", "ఫ్లాట్"
+            ]
+            is_bhk = any(w in t_lower for w in bhk_patterns)
             is_knowledge = is_real_estate_knowledge_query(user_text)
 
             if is_decline:
@@ -1786,24 +1846,6 @@ async def _process_voice_demo_turn_stream_impl(
                 target_template_name = "RE_SITE_VISIT_DECLINE"
                 next_state = "RE_CALL_ENDED"
                 should_hangup = True
-            elif is_confirm and not is_bhk:
-                detected_intent = "CONFIRM_SITE_VISIT"
-                validated_intent = "CONFIRM_SITE_VISIT"
-                tool_allowed = validate_tool_call(industry, current_state, validated_intent, requested_tool, slots={"visit": user_text})
-                if tool_allowed:
-                    tool_executed = "book_site_visit"
-                    tool_result = f"Success: Site visit booked."
-                target_template_name = "RE_SITE_VISIT_CONFIRM"
-                next_state = "RE_CALL_ENDED"
-                should_hangup = True
-            elif is_bhk:
-                choice = extract_bhk_choice(user_text, lang_key)
-                detected_intent = "SELECT_BHK"
-                validated_intent = "SELECT_BHK"
-                collected_info["unit_choice"] = choice
-                await self.session_manager.update_session_metadata(call_id, {"collected_info": collected_info})
-                target_template_name = "RE_RECOMMENDATION"
-                next_state = "RE_SITE_VISIT_OFFER"
             elif is_knowledge:
                 direct_ans = resolve_real_estate_direct_knowledge(user_text, lang_key)
                 pending_prompt = {
@@ -1819,10 +1861,10 @@ async def _process_voice_demo_turn_stream_impl(
                         response_text = facts[0]["text"] + pending_prompt
                     else:
                         logger.info(f"[RE-DYNAMIC-LLM] session={call_id} dynamic Gemini LLM generation for query='{user_text}'.")
-                        llm_prompt = f"The customer asked: '{user_text}'. Answer their real estate question accurately, helpfully, and professionally in 1-2 sentences as the Skyline Developers sales executive."
+                        llm_prompt = f"The customer asked: '{user_text}'. Answer their real estate question accurately, helpfully, and professionally in 1-2 sentences as the Skyline Developers sales executive, then ask if they would like to schedule a site visit."
                         llm_resp, _ = await self.llm_service.generate_completion(history + [{"role": "user", "content": llm_prompt}])
                         if llm_resp:
-                            response_text = clean_speech_text(llm_resp) + pending_prompt
+                            response_text = clean_speech_text(llm_resp)
                         else:
                             response_text = {
                                 "en": "Skyline Residency offers luxury 2 & 3 BHK apartments in Gachibowli with ready sample flats." + pending_prompt,
@@ -1834,10 +1876,47 @@ async def _process_voice_demo_turn_stream_impl(
                 await self.session_manager.append_message(call_id, bot_turn)
                 await self.session_manager.update_session_state(call_id, current_state)
                 return
-            else:
+            elif is_bhk:
+                choice = extract_bhk_choice(user_text, lang_key)
+                detected_intent = "SELECT_BHK"
+                validated_intent = "SELECT_BHK"
+                collected_info["unit_choice"] = choice
+                await self.session_manager.update_session_metadata(call_id, {"collected_info": collected_info})
+                target_template_name = "RE_RECOMMENDATION"
+                next_state = "RE_SITE_VISIT_OFFER"
+            elif is_confirm:
+                detected_intent = "CONFIRM_SITE_VISIT"
+                validated_intent = "CONFIRM_SITE_VISIT"
+                tool_allowed = validate_tool_call(industry, current_state, validated_intent, requested_tool, slots={"visit": user_text})
+                if tool_allowed:
+                    tool_executed = "book_site_visit"
+                    tool_result = f"Success: Site visit booked."
                 target_template_name = "RE_SITE_VISIT_CONFIRM"
                 next_state = "RE_CALL_ENDED"
                 should_hangup = True
+            else:
+                # Do not immediately hang up on unclassified customer questions/statements
+                logger.info(f"[RE-DYNAMIC-LLM] session={call_id} unclassified input in RE_SITE_VISIT_OFFER: '{user_text}'.")
+                llm_prompt = f"The customer said: '{user_text}'. Respond naturally and helpfully in 1-2 sentences as the Skyline Developers sales executive, and ask if they would like to schedule a site visit."
+                llm_resp, _ = await self.llm_service.generate_completion(history + [{"role": "user", "content": llm_prompt}])
+                pending_prompt = {
+                    "en": "\n\nWould you like to schedule a site visit to check out the property?",
+                    "hi": "\n\nक्या आप प्रॉपर्टी देखने के लिए साइट विजिट बुक करना चाहेंगे?",
+                    "te": "\n\nప్రాపర్టీని చూడటానికి సైట్ విజిట్ బుక్ చేయాలనుకుంటున్నారా?"
+                }[lang_key]
+                if llm_resp:
+                    response_text = clean_speech_text(llm_resp)
+                else:
+                    response_text = {
+                        "en": "We would love to show you around Skyline Residency in Gachibowli." + pending_prompt,
+                        "hi": "हम आपको गचीबोवली में Skyline Residency दिखाना पसंद करेंगे।" + pending_prompt,
+                        "te": "మేము మీకు గచ్చిబౌలిలోని Skyline Residency చూపించడానికి సంతోషిస్తాము." + pending_prompt
+                    }[lang_key]
+                yield response_text, False, False
+                bot_turn = {"role": "assistant", "content": response_text}
+                await self.session_manager.append_message(call_id, bot_turn)
+                await self.session_manager.update_session_state(call_id, current_state)
+                return
 
             await self.session_manager.update_session_state(call_id, next_state)
 
