@@ -623,9 +623,14 @@ async function ensureAudioContexts() {
         await playbackContext.resume();
     }
 
-    // Instantly wake up mobile & desktop hardware DAC audio route with a silent warmup buffer
+    // Wake up mobile & desktop hardware DAC with a 250ms silent warmup buffer.
+    // A single-sample buffer is too short for mobile — the hardware audio route
+    // (especially on iOS/Android) needs a real buffer duration to fully open
+    // before the first real audio chunk arrives, preventing dropped first syllables.
     try {
-        const warmBuf = playbackContext.createBuffer(1, 1, playbackContext.sampleRate);
+        const warmDurationSec = 0.25; // 250ms
+        const warmSamples = Math.ceil(playbackContext.sampleRate * warmDurationSec);
+        const warmBuf = playbackContext.createBuffer(1, warmSamples, playbackContext.sampleRate);
         const warmSrc = playbackContext.createBufferSource();
         warmSrc.buffer = warmBuf;
         warmSrc.connect(playbackContext.destination);
@@ -920,10 +925,22 @@ function playPcmAudio(arrayBuffer) {
         console.warn(`[TTS-FLOW-BROWSER] playback_gap_ms=${gapMs.toFixed(1)}ms > 40ms limit!`);
     }
 
-    // Continuous gapless scheduling:
-    // If starting fresh or recovering from pause, use a safe 45ms initial lookahead for hardware synchronization
-    if (nextPlayTime < now + 0.045) {
-        nextPlayTime = now + 0.045;
+    // Continuous gapless scheduling with device-adaptive lookahead.
+    // Mobile browsers (iOS Safari, Android Chrome) have higher hardware latency
+    // and AudioContext.currentTime jitter. Using a tiny 45ms lookahead for the
+    // very first chunk of a session causes it to be scheduled for a time that
+    // has already passed on mobile, silently dropping the first syllables.
+    //
+    // Fix: use a larger 200ms lookahead for the first chunk of each utterance
+    // (nextPlayTime === 0 means fresh session or after stopAllAudio), then fall
+    // back to an 80ms gap-recovery lookahead for any subsequent gap recovery.
+    // Subsequent chunks remain gapless (scheduled immediately after the previous).
+    if (nextPlayTime === 0) {
+        // First chunk of a new session/utterance — give mobile hardware 200ms to stabilise
+        nextPlayTime = now + 0.200;
+    } else if (nextPlayTime < now + 0.080) {
+        // Gap recovery after a brief stall — use 80ms to recover safely on mobile
+        nextPlayTime = now + 0.080;
     }
     src.start(nextPlayTime);
     nextPlayTime += buf.duration;

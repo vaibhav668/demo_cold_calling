@@ -1302,8 +1302,17 @@ async def _run_pipeline(
         if meta_info:
             task = meta_info.get("pregenerate_task")
             if task and not task.done():
-                logger.info(f"[Kokoro-PreGen] Background greeting pre-generation task not completed. Bypassing wait to avoid blocking connection.")
-                task.cancel()
+                # On mobile / slow networks the WebSocket can connect before the
+                # background pregen task finishes. Wait up to 2s for it rather
+                # than cancelling immediately, so every device gets the fast
+                # pre-generated greeting instead of falling back to real-time.
+                logger.info(f"[Kokoro-PreGen] Pregen task still running for session {call_uuid}. Waiting up to 2s...")
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=2.0)
+                    logger.info(f"[Kokoro-PreGen] Pregen task completed within wait window for session {call_uuid}")
+                except (asyncio.TimeoutError, asyncio.CancelledError):
+                    logger.info(f"[Kokoro-PreGen] Pregen task did not finish in time for session {call_uuid}. Falling back to real-time synthesis.")
+                    task.cancel()
             
             if meta_info.get("pregenerated_greeting"):
                 served_pregen = True
