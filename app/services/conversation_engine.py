@@ -492,10 +492,15 @@ def normalize_name_transcript(text: str) -> str:
     return text.strip().rstrip(".,!?।")
 
 
-def extract_customer_name_from_text(text: str, language: str = "en") -> Optional[str]:
+def extract_customer_name_from_text(text: str, language: str = "en", agent_name: Optional[str] = None) -> Optional[str]:
     """
     Consolidated, language-aware customer name extractor.
     Supports English, Hindi, Hinglish, and Telugu patterns.
+
+    agent_name: The current session's agent persona name (e.g. 'Maya', 'Arjun').
+    Only THIS agent's name is blocked from being treated as the customer name.
+    Other agent names are allowed — a real user may genuinely be named 'Arjun'
+    while talking to agent 'Sophia'.
     """
     if not text:
         return None
@@ -504,8 +509,6 @@ def extract_customer_name_from_text(text: str, language: str = "en") -> Optional
     
     INVALID_WORDS = {
         "unknown", "none", "null", "undefined", "n/a", "user", "customer",
-        # Agent/persona names — must NEVER be extracted as customer name
-        "sophia", "maya", "ananya", "arjun", "david",
         "my gosh", "in the car", "my car", "gosh", "yes", "no", "hello", "hi", "ok", "okay", "yep", "yeah", "sure",
         "go", "let's", "lets", "let", "come", "start", "see", "look", "show", "tell", "give", "speak", "speaking", "talk", "hear", "listen", "calling",
         "please", "today", "tomorrow", "yesterday", "appointment", "reschedule", "confirm", "cancel", "hospital", "doctor", "receptionist",
@@ -515,6 +518,10 @@ def extract_customer_name_from_text(text: str, language: str = "en") -> Optional
         "మీరు", "నా", "పేరు", "నమస్కారం", "అవును", "సరే", "ధన్యవాదాలు", "మాట్లాడుతున్నాను", "మాట్లాడుతున్నా", "నేను",
         "మరియు", "లేదా", "ఉంది", "ఉన్నారు"
     }
+    # Block only the current session's agent name — not all agent names.
+    # A real user may genuinely be named 'Arjun' while talking to agent 'Sophia'.
+    if agent_name:
+        INVALID_WORDS = INVALID_WORDS | {agent_name.strip().lower()}
 
     def clean_name(name_str: str) -> Optional[str]:
         if not name_str:
@@ -1166,7 +1173,7 @@ async def _process_voice_demo_turn_stream_impl(
             allowed_intents = ["NAME", "UNKNOWN"]
             
             if not customer_name:
-                extracted = extract_customer_name_from_text(user_text, lang_code)
+                extracted = extract_customer_name_from_text(user_text, lang_code, agent_name=agent_name)
                 if extracted:
                     customer_name = extracted
                     session_store.customer_name = extracted
@@ -1492,7 +1499,7 @@ async def _process_voice_demo_turn_stream_impl(
             allowed_intents = ["NAME", "UNKNOWN"]
             
             if not customer_name:
-                extracted = extract_customer_name_from_text(user_text, lang_code)
+                extracted = extract_customer_name_from_text(user_text, lang_code, agent_name=agent_name)
                 if extracted:
                     customer_name = extracted
                     session_store.customer_name = extracted

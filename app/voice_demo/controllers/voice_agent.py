@@ -1040,7 +1040,7 @@ async def voice_agent_websocket(websocket: WebSocket, session_id: str):
 
                                 if current_state in ("GREETING", "WAIT_FOR_NAME", "IDENTITY_COLLECTION", "HOSPITAL_WAITING_FOR_NAME", "RE_WAITING_FOR_NAME"):
                                     from app.services.conversation_engine import extract_customer_name_from_text
-                                    extracted_name = extract_customer_name_from_text(transcript, language_code)
+                                    extracted_name = extract_customer_name_from_text(transcript, language_code, agent_name=meta.get("agent_name"))
                                     if extracted_name:
                                         slot_extracted = True
                                         semantic_valid = True
