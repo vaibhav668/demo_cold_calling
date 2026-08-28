@@ -163,6 +163,14 @@ function setupListeners() {
 
     elModalRetryBtn.addEventListener("click", () => {
         elThankYouModal.classList.add("hidden");
+        resetUIAfterCall();
+    });
+
+    elThankYouModal.addEventListener("click", (e) => {
+        if (e.target === elThankYouModal) {
+            elThankYouModal.classList.add("hidden");
+            resetUIAfterCall();
+        }
     });
 }
 
@@ -815,11 +823,12 @@ async function startConversation() {
 
         websocket.onclose = (evt) => {
             stopKeepalive();
+            connectionState = "disconnected";
+            stopAllAudio();
+            teardownAudioCapture();
+            resetUIAfterCall();
             if (!wsClosedByUs) {
-                setOrbState(CallState.ERROR, "Disconnected");
-                stopAllAudio();
-                teardownAudioCapture();
-                resetUIAfterCall();
+                setOrbState(CallState.CALL_COMPLETED, "Ready");
                 elThankYouModal.classList.remove("hidden");
             }
         };
@@ -835,7 +844,7 @@ async function stopConversation() {
     if (connectionState === "disconnected") return;
     connectionState = "disconnected";
 
-    setOrbState(CallState.CALL_COMPLETED, "Conversation Ended");
+    setOrbState(CallState.CALL_COMPLETED, "Ready");
     stopAllAudio();
     stopKeepalive();
 
@@ -845,6 +854,7 @@ async function stopConversation() {
         websocket.close(1000, "User ended call");
     }
     websocket = null;
+    sessionId = null;
     teardownAudioCapture();
     resetUIAfterCall();
 
@@ -853,6 +863,11 @@ async function stopConversation() {
 }
 
 function resetUIAfterCall() {
+    connectionState = "disconnected";
+    websocket = null;
+    sessionId = null;
+    wsClosedByUs = false;
+
     elStartBtn.disabled = false;
     elStartBtn.classList.remove("hidden");
     elEndBtn.classList.add("hidden");
@@ -861,8 +876,13 @@ function resetUIAfterCall() {
     elMuteBtn.classList.remove("muted");
     elMuteBtn.innerHTML = `<i class="fa-solid fa-microphone"></i>`;
     elMicIndicator.classList.remove("recording");
-    elMicStatus.textContent = "Ready";
+    elMicStatus.textContent = "Mic Ready";
     isMuted = false;
+
+    nextPlayTime = 0;
+    activeSources = [];
+
+    setOrbState(CallState.CALL_COMPLETED, "Ready");
 }
 
 function toggleMute() {
@@ -1025,8 +1045,8 @@ function setOrbState(state, customLabel) {
             badgeClass = "status-speaking";
             break;
         case CallState.CALL_COMPLETED:
-            elOrb.classList.add("state-disconnected");
-            label = "Call Ended";
+            elOrb.classList.add("state-idle");
+            label = customLabel || "Ready";
             badgeClass = "status-ready";
             break;
         case CallState.ERROR:
