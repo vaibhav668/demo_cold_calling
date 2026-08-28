@@ -492,6 +492,80 @@ def normalize_name_transcript(text: str) -> str:
     return text.strip().rstrip(".,!?।")
 
 
+def clean_reschedule_slot(text: str) -> Optional[str]:
+    """
+    Extracts and cleans the target date/time slot from a user utterance.
+    E.g. "Please reschedule it for tomorrow at 11 AM" -> "tomorrow at 11 AM"
+         "Can you reschedule for Friday 4 PM" -> "Friday 4 PM"
+         "We're scheduled for tomorrow morning 11 am" -> "tomorrow morning 11 am"
+         "Please reschedule it" -> None (user did not provide a slot)
+    """
+    if not text:
+        return None
+    raw = text.strip().rstrip(".,!?।")
+
+    # Check if user mentioned any date/time keyword
+    time_date_pattern = re.compile(
+        r'\b('
+        r'monday|tuesday|wednesday|thursday|friday|saturday|sunday|'
+        r'mon|tue|wed|thu|fri|sat|sun|'
+        r'today|tomorrow|day after tomorrow|yesterday|tonight|'
+        r'morning|afternoon|evening|night|noon|'
+        r'next week|this week|next month|next|'
+        r'\d{1,2}\s*(?::\d{2})?\s*(?:am|pm|o\'clock|oclock)?|'
+        r'\d{1,2}(?:st|nd|rd|th)?\s+(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)|'
+        r'(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+\d{1,2}|'
+        r'कल|आज|परसों|सुबह|दोपहर|शाम|रात|बजे|\d{1,2}\s*बजे|सोमवार|मंगलवार|बुधवार|गुरुवार|शुक्रवार|शनिवार|रविवार|अगले|अगला|'
+        r'రేపు|ఈరోజు|ఎల్లుండి|ఉదయం|మధ్యాహ్నం|సాయంత్రం|రాత్రి|గంటలకు|\d{1,2}\s*గంటలకు|సోమవారం|మంగళవారం|బుధవారం|గురువారం|శుక్రవారం|శనివారం|ఆదివారం'
+        r')\b',
+        re.IGNORECASE
+    )
+
+    has_time_date = bool(time_date_pattern.search(raw))
+    if not has_time_date:
+        return None
+
+    # Strip conversational prefixes
+    cleaned = raw
+    prefixes = [
+        r"^(?:can\s+you\s+please|could\s+you\s+please|please|kindly)\s+",
+        r"^(?:i\s+want\s+to|i\s+would\s+like\s+to|i\'d\s+like\s+to|i\s+need\s+to|can\s+we|could\s+we|can\s+you|could\s+you)\s+",
+        r"^(?:we\'re\s+scheduled\s+for|were\s+scheduled\s+for|we\s+are\s+scheduled\s+for)\s+",
+        r"^(?:reschedule\s+it\s+for|reschedule\s+for|reschedule\s+it\s+to|reschedule\s+to|reschedule\s+it|reschedule)\s+",
+        r"^(?:schedule\s+it\s+for|schedule\s+for|schedule\s+it\s+to|schedule\s+to|schedule\s+it|schedule)\s+",
+        r"^(?:change\s+it\s+to|change\s+to|change\s+it\s+for|change\s+for|change)\s+",
+        r"^(?:move\s+it\s+to|move\s+to|move\s+it\s+for|move\s+for|move)\s+",
+        r"^(?:postpone\s+it\s+to|postpone\s+to|postpone\s+it\s+for|postpone\s+for|postpone)\s+",
+        r"^(?:how\s+about|what\s+about|make\s+it\s+for|make\s+it|keep\s+it\s+for|keep\s+it\s+at|keep\s+it|put\s+it\s+for|do\s+it\s+for)\s+",
+        r"^(?:yes|yeah|yep|sure|okay|ok|haan|ha|हाँ|जी हाँ|అవును|సరే)[,\s]+",
+        r"^(?:for|at|on|to)\s+",
+        r"^(?:कृपया\s+इसे|कृपया)\s+",
+        r"^(?:रीशेड्यूल\s+कर\s+दो|रीशेड्यूल\s+कर\s+दीजिए|रीशेड्यूल\s+कर\s+दें|रीशेड्यूल\s+करना\s+है|रीशेड्यूल)\s+",
+        r"^(?:బహుశా|దయచేసి|రీషెడ్యూల్\s+చేయండి|రీషెడ్యూల్)\s+"
+    ]
+
+    changed = True
+    while changed:
+        changed = False
+        for p in prefixes:
+            new_cleaned = re.sub(p, "", cleaned, flags=re.IGNORECASE).strip()
+            if new_cleaned != cleaned and new_cleaned:
+                cleaned = new_cleaned
+                changed = True
+
+    suffixes = [
+        r"\s+(?:please|karo|kar do|kar dijiye|kariye|karein|hoga|rahega|karna hai|చేయండి|చెయ్యండి)$",
+        r"\s+(?:रीशेड्यूल\s+कर\s+दो|रीशेड्यूल\s+कर\s+दीजिए|रीशेड्यूल\s+कर\s+दें|रीशेड्यूल\s+करना\s+है|रीशेड्यूल)$",
+        r"\s+(?:రీషెడ్యూల్\s+చేయండి|రీషెడ్యూల్\s+చేయగలరా|రీషెడ్యూల్)$",
+        r"\s+(?:would be fine|would be good|would work|works for me|is fine|is good)$"
+    ]
+    for s in suffixes:
+        cleaned = re.sub(s, "", cleaned, flags=re.IGNORECASE).strip()
+
+    cleaned = cleaned.rstrip(".,!?। ").strip()
+    return cleaned if cleaned else None
+
+
 def extract_customer_name_from_text(text: str, language: str = "en", agent_name: Optional[str] = None) -> Optional[str]:
     """
     Consolidated, language-aware customer name extractor.
@@ -1359,14 +1433,14 @@ async def _process_voice_demo_turn_stream_impl(
                     next_state = "HOSPITAL_POST_ACTION"
 
             elif validated_intent == "RESCHEDULE_APPOINTMENT":
-                slot_match = re.search(r'\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|next week|\d{1,2}\s*(am|pm))\b', t_lower)
-                if slot_match:
-                    tool_allowed = validate_tool_call(industry, current_state, validated_intent, requested_tool, slots={"slot": user_text})
+                cleaned_slot = clean_reschedule_slot(user_text)
+                if cleaned_slot:
+                    tool_allowed = validate_tool_call(industry, current_state, validated_intent, requested_tool, slots={"slot": cleaned_slot})
                     logger.info(f"[HOSPITAL-TOOL-GUARD] session={call_id} tool=reschedule_appointment allowed={tool_allowed}")
                     if tool_allowed:
                         tool_executed = "reschedule_appointment"
-                        tool_result = f"Success: Rescheduled to {user_text}"
-                        collected_info["reschedule_slot"] = user_text
+                        tool_result = f"Success: Rescheduled to {cleaned_slot}"
+                        collected_info["reschedule_slot"] = cleaned_slot
                         logger.info(f"[HOSPITAL-ACTION] session={call_id} action=RESCHEDULE_APPOINTMENT result={tool_result}")
                         target_template_name = "RESCHEDULE_CONFIRM"
                         next_state = "HOSPITAL_POST_ACTION"
@@ -1416,22 +1490,29 @@ async def _process_voice_demo_turn_stream_impl(
                 await self.session_manager.append_message(call_id, bot_turn)
                 return
             else:
-                allowed_intents = ["PROVIDE_SLOT"]
-                detected_intent = "PROVIDE_SLOT"
-                validated_intent = "PROVIDE_SLOT"
-                requested_tool = "reschedule_appointment"
-                
-                collected_info["reschedule_slot"] = user_text
-                await self.session_manager.update_session_metadata(call_id, {"collected_info": collected_info})
+                cleaned_slot = clean_reschedule_slot(user_text)
+                if cleaned_slot:
+                    allowed_intents = ["PROVIDE_SLOT"]
+                    detected_intent = "PROVIDE_SLOT"
+                    validated_intent = "PROVIDE_SLOT"
+                    requested_tool = "reschedule_appointment"
+                    
+                    collected_info["reschedule_slot"] = cleaned_slot
+                    await self.session_manager.update_session_metadata(call_id, {"collected_info": collected_info})
 
-                tool_allowed = validate_tool_call(industry, current_state, validated_intent, requested_tool, slots={"slot": user_text})
-                logger.info(f"[HOSPITAL-TOOL-GUARD] session={call_id} tool=reschedule_appointment allowed={tool_allowed}")
-                if tool_allowed:
-                    tool_executed = "reschedule_appointment"
-                    tool_result = f"Success: Rescheduled to {user_text}"
-                    logger.info(f"[HOSPITAL-ACTION] session={call_id} action=RESCHEDULE_APPOINTMENT result={tool_result}")
-                    target_template_name = "RESCHEDULE_CONFIRM"
-                    next_state = "HOSPITAL_POST_ACTION"
+                    tool_allowed = validate_tool_call(industry, current_state, validated_intent, requested_tool, slots={"slot": cleaned_slot})
+                    logger.info(f"[HOSPITAL-TOOL-GUARD] session={call_id} tool=reschedule_appointment allowed={tool_allowed}")
+                    if tool_allowed:
+                        tool_executed = "reschedule_appointment"
+                        tool_result = f"Success: Rescheduled to {cleaned_slot}"
+                        logger.info(f"[HOSPITAL-ACTION] session={call_id} action=RESCHEDULE_APPOINTMENT result={tool_result}")
+                        target_template_name = "RESCHEDULE_CONFIRM"
+                        next_state = "HOSPITAL_POST_ACTION"
+                else:
+                    detected_intent = "RESCHEDULE_APPOINTMENT"
+                    validated_intent = "RESCHEDULE_APPOINTMENT"
+                    target_template_name = "RESCHEDULE"
+                    next_state = "HOSPITAL_WAITING_FOR_RESCHEDULE_SLOT"
 
                 await self.session_manager.update_session_state(call_id, next_state)
 
