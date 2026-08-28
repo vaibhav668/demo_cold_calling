@@ -503,7 +503,9 @@ def extract_customer_name_from_text(text: str, language: str = "en") -> Optional
     raw = text.strip().rstrip(".,!?।")
     
     INVALID_WORDS = {
-        "unknown", "none", "null", "undefined", "n/a", "user", "customer", 
+        "unknown", "none", "null", "undefined", "n/a", "user", "customer",
+        # Agent/persona names — must NEVER be extracted as customer name
+        "sophia", "maya", "ananya", "arjun", "david",
         "my gosh", "in the car", "my car", "gosh", "yes", "no", "hello", "hi", "ok", "okay", "yep", "yeah", "sure",
         "go", "let's", "lets", "let", "come", "start", "see", "look", "show", "tell", "give", "speak", "speaking", "talk", "hear", "listen", "calling",
         "please", "today", "tomorrow", "yesterday", "appointment", "reschedule", "confirm", "cancel", "hospital", "doctor", "receptionist",
