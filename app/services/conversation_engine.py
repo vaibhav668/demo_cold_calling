@@ -518,10 +518,9 @@ def extract_customer_name_from_text(text: str, language: str = "en", agent_name:
         "మీరు", "నా", "పేరు", "నమస్కారం", "అవును", "సరే", "ధన్యవాదాలు", "మాట్లాడుతున్నాను", "మాట్లాడుతున్నా", "నేను",
         "మరియు", "లేదా", "ఉంది", "ఉన్నారు"
     }
-    # Block only the current session's agent name — not all agent names.
-    # A real user may genuinely be named 'Arjun' while talking to agent 'Sophia'.
-    if agent_name:
-        INVALID_WORDS = INVALID_WORDS | {agent_name.strip().lower()}
+    # agent_name is intentionally NOT added to INVALID_WORDS.
+    # Explicit pattern matches (steps 1-3) must always trust what the user said.
+    # The agent name is only blocked in the single-word fallback (step 4) below.
 
     def clean_name(name_str: str) -> Optional[str]:
         if not name_str:
@@ -582,9 +581,25 @@ def extract_customer_name_from_text(text: str, language: str = "en", agent_name:
             if cand:
                 return cand
 
-    # 4. Fallback for single, double, or triple word name inputs
+    # 4. Fallback: single / double / triple word input with no surrounding context.
+    #
+    # The agent name is blocked HERE AND ONLY HERE.
+    # A bare single word exactly matching the agent name is the signature of
+    # greeting echo: VAD occasionally captures the tail of the agent's own
+    # "Hi, this is Maya from CityCare..." audio, and Whisper transcribes just
+    # "Maya". Blocking it here prevents a false customer_name assignment.
+    #
+    # This does NOT break the real-user case:
+    #   "My name is Maya" (agent Maya) -> matched by step 1 above, never reaches here
+    #   "Maya speaking"   (agent Maya) -> matched by step 1 above, never reaches here
+    #   "Maya Sharma"     (agent Maya) -> 2 words, the guard below does NOT fire
+    #   bare "Maya"       (agent Maya) -> 1 word == agent name -> correctly rejected
     words = raw.split()
     if 1 <= len(words) <= 3:
+        if (len(words) == 1
+                and agent_name
+                and words[0].lower() == agent_name.strip().lower()):
+            return None  # Single bare word == agent name -> likely greeting echo
         cleaned = clean_name(raw)
         if cleaned:
             if re.search(r'[A-Za-z\u0900-\u097F\u0C00-\u0C7F]', cleaned):
