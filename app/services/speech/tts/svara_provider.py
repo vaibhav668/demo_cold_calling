@@ -61,10 +61,10 @@ _NEURAL_VOICE_MAP = {
 }
 
 
-def trim_pcm_digital_silence(pcm_bytes: bytes, sample_rate: int = 24000, threshold: int = 100, pad_ms: int = 50) -> Tuple[bytes, float, float]:
+def trim_pcm_digital_silence(pcm_bytes: bytes, sample_rate: int = 24000, threshold: int = 250, pad_ms: int = 10) -> Tuple[bytes, float, float]:
     """
     Trims digital near-zero silence from start and end of 16-bit mono PCM buffer.
-    Leaves pad_ms (50ms) of natural padding to prevent abrupt speech clipping on mobile devices & hardware DACs.
+    Leaves pad_ms (10ms) of subtle natural padding to prevent abrupt speech clipping.
     Returns (trimmed_bytes, leading_silence_ms, trailing_silence_ms).
     """
     if not pcm_bytes or len(pcm_bytes) < 4:
@@ -73,18 +73,19 @@ def trim_pcm_digital_silence(pcm_bytes: bytes, sample_rate: int = 24000, thresho
     samples = np.frombuffer(pcm_bytes, dtype=np.int16)
     abs_samples = np.abs(samples)
 
-    non_silent = np.where(abs_samples > threshold)[0]
+    non_silent = np.where(abs_samples > threshold)[0] 
     if len(non_silent) == 0:
         return pcm_bytes, 0.0, 0.0
 
     start_idx = non_silent[0]
     end_idx = non_silent[-1]
-
+    
+     
     pad_samples = int((pad_ms / 1000.0) * sample_rate)
     padded_start = max(0, start_idx - pad_samples)
     padded_end = min(len(samples), end_idx + 1 + pad_samples)
-
-    trimmed_samples = samples[padded_start:padded_end]
+  
+    trimmed_samples =  samples[padded_start:padded_end]
 
     leading_silence_ms = (padded_start / sample_rate) * 1000.0
     trailing_silence_ms = ((len(samples) - padded_end) / sample_rate) * 1000.0
@@ -94,10 +95,10 @@ def trim_pcm_digital_silence(pcm_bytes: bytes, sample_rate: int = 24000, thresho
         f"[PCM-SILENCE-TRIM] trimmed_leading={leading_silence_ms:.1f}ms "
         f"trimmed_trailing={trailing_silence_ms:.1f}ms speech_dur_ms={speech_dur_ms:.1f}ms"
     )
-
+ 
     return trimmed_samples.tobytes(), leading_silence_ms, trailing_silence_ms
 
-
+ 
 def apply_svara_prosody_enhancements(text: str, intent: Optional[str] = None) -> Tuple[str, str, str]:
     """
     Classifies input speech into one of 13 conversational emotion/intent categories:
@@ -138,7 +139,6 @@ def apply_svara_prosody_enhancements(text: str, intent: Optional[str] = None) ->
             category = "CLOSING"
         else:
             category = "LISTENING"
-
     # Map 13 categories to Svara prosody parameters
     if category in ("CONFIRMATION", "POSITIVE", "SALES", "INTEREST", "GREETING", "INTRODUCTION"):
         tag = "<happy>"
